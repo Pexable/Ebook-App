@@ -288,17 +288,178 @@ ol.toc{list-style:none;padding:0}ol.toc li{margin:.6em 0}ol.toc a{text-decoratio
 const page=(t,b,l,extra='')=>`<?xml version="1.0" encoding="utf-8"?>\n<!DOCTYPE html>\n<html xmlns="http://www.w3.org/1999/xhtml" ${extra} lang="${l}" xml:lang="${l}"><head><meta charset="utf-8"/><title>${esc(t)}</title><link rel="stylesheet" type="text/css" href="style.css"/></head><body>${b}</body></html>`;
 const tocLinks=()=>`<ol class="toc">${S.chapters.map((c,i)=>`<li><a href="ch${i+1}.xhtml">${esc(c.title||'অধ্যায় '+(i+1))}</a></li>`).join('')}</ol>`;
 
-/* ---------- preview ---------- */
-$('#btnPreview').onclick=()=>{
-  commit(); const m=S.meta;
-  const front=`<div style="text-align:center;margin:12vh 0">${S.cover?`<img src="${S.cover}" style="max-height:60vh;max-width:90%"><br>`:''}<h1 style="text-align:center">${esc(m.title||'নামহীন বই')}</h1><p style="text-align:center">${esc(m.author)}</p></div><hr>`;
-  const toc=S.toc.on?`<h1>${esc(S.toc.title)}</h1>${S.toc.auto?tocLinks().replace(/href="[^"]*"/g,''):toXhtml(S.toc.html)}<hr>`:'';
-  const chs=S.chapters.map(c=>`<h1>${esc(c.title)}</h1>${toXhtml(ch2html(c))}<hr>`).join('');
-  $('#frame').srcdoc=`<!DOCTYPE html><html lang="${m.lang}"><head><meta charset="utf-8"><style>${BOOK_CSS}body{max-width:46em;margin:0 auto;padding:20px;font-family:"Noto Serif Bengali",Georgia,serif;font-size:19px}</style></head><body>${front}${toc}${chs}</body></html>`;
-  $('#modal').hidden=false;
+/* ---------- preview (chapter-based, user-friendly) ---------- */
+const PV = {
+  i: 0,              // current index: -2 cover, -1 toc, 0..n-1 chapters, n locked
+  fs: 100,
+  theme: 0,          // 0 light, 1 sepia, 2 dark
+  limit: 3,          // sample preview: first N chapters (0 = full)
+  pages: []          // built list of {type, title, html}
 };
-$('#btnClose').onclick=()=>$('#modal').hidden=true;
-document.addEventListener('keydown',e=>{ if(e.key==='Escape') $('#modal').hidden=true; });
+const PV_THEMES = [
+  '', // light
+  'html,body{background:#f4ecd8!important;color:#3b2f1e!important}',
+  'html,body{background:#14181f!important;color:#d8dde6!important}a{color:#8ab4f8!important}'
+];
+const PV_BASE = `body{font-family:"Noto Serif Bengali","Hind Siliguri",Georgia,serif;line-height:1.85;padding:18px 16px 48px;max-width:46em;margin:0 auto;overflow-wrap:anywhere}
+img,svg{max-width:100%;height:auto}figure{margin:1.2em auto;text-align:center}figure img{width:100%}
+figcaption{font-size:.85em;color:#555;margin-top:.4em}h1{font-size:1.5em;line-height:1.35}h2{font-size:1.25em}
+blockquote{margin:1em 0;padding-left:1em;border-left:3px solid #888;font-style:italic}
+.cover{text-align:center;margin:10vh 0}.cover img{max-height:55vh;max-width:90%}
+.locked{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:60vh;text-align:center;padding:24px}
+.locked h2{margin:0 0 12px}.locked p{color:#666;max-width:26em;margin:0 0 20px}
+.locked .cta{display:inline-block;background:#1f6f5c;color:#fff;padding:12px 28px;border-radius:8px;font-weight:600;text-decoration:none;border:0;cursor:pointer;font-size:16px}`;
+
+function getChapterContent(c){
+  // Prefer real HTML. If chapter is in text mode but contains tags, treat as HTML
+  // so preview never shows raw tags like </h1> or <p><strong>...
+  let raw = c.html || '';
+  if((c.mode||'html')==='text'){
+    if(/<[a-z][\s\S]*>/i.test(raw)) return sanitize(raw, true);
+    return textToHtml(raw);
+  }
+  return sanitize(raw, true);
+}
+
+function buildPreviewPages(){
+  const m = S.meta, pages = [];
+  // Cover
+  const coverHtml = `<div class="cover">${S.cover?`<img src="${S.cover}" alt="কভার">`:''}<h1>${esc(m.title||'নামহীন বই')}</h1><p>${esc(m.author||'')}</p>${m.desc?`<p style="margin-top:1.5em;font-size:.95em;color:#555">${esc(m.desc)}</p>`:''}</div>`;
+  pages.push({type:'cover', title:'কভার', html:coverHtml});
+  // TOC
+  if(S.toc.on){
+    const inner = S.toc.auto ? tocLinks().replace(/href="[^"]*"/g,'') : toXhtml(S.toc.html||'');
+    pages.push({type:'toc', title:S.toc.title||'সূচিপত্র', html:`<h1>${esc(S.toc.title||'সূচিপত্র')}</h1>${inner}`});
+  }
+  // Chapters (respect sample limit)
+  const lim = PV.limit > 0 ? Math.min(PV.limit, S.chapters.length) : S.chapters.length;
+  S.chapters.forEach((c,i)=>{
+    if(i < lim){
+      const body = getChapterContent(c);
+      pages.push({type:'chapter', title:c.title||('অধ্যায় '+(i+1)), html:`<h1>${esc(c.title||'অধ্যায় '+(i+1))}</h1>${toXhtml(body)}`, idx:i});
+    }
+  });
+  // Locked / Unlock CTA if sample limit applied and more chapters exist
+  if(PV.limit > 0 && S.chapters.length > lim){
+    const left = S.chapters.length - lim;
+    pages.push({type:'locked', title:'সীমিত প্রিভিউ', html:`
+      <div class="locked">
+        <h2>এখানেই নমুনা প্রিভিউ শেষ</h2>
+        <p>আপনি প্রথম ${lim}টি অধ্যায় পড়েছেন। বাকি ${left}টি অধ্যায় দেখতে সম্পূর্ণ বই আনলক করুন।</p>
+        <button class="cta" id="pvUnlock">সম্পূর্ণ বই আনলক করুন</button>
+        <p style="margin-top:18px;font-size:.9em;color:#888">এটি শুধুমাত্র প্রিভিউ মোড। EPUB এক্সপোর্টে পুরো বই পাবেন।</p>
+      </div>`});
+  }
+  PV.pages = pages;
+  return pages;
+}
+
+function pvUserCss(){
+  return `html{font-size:${PV.fs}%!important}${PV_THEMES[PV.theme]}`;
+}
+
+function renderPreviewPage(){
+  const pages = PV.pages;
+  if(!pages.length) return;
+  const i = Math.max(0, Math.min(PV.i, pages.length-1));
+  PV.i = i;
+  const pg = pages[i];
+  const m = S.meta;
+  const bg = PV.theme===1 ? '#f4ecd8' : PV.theme===2 ? '#14181f' : '#fff';
+  const idoc = $('#frame').contentDocument;
+  idoc.open();
+  idoc.write(`<!DOCTYPE html><html lang="${m.lang||'bn'}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>${PV_BASE}${pvUserCss()}</style></head><body></body></html>`);
+  idoc.close();
+  // Insert content as real DOM so HTML is never shown as text
+  const tmp = idoc.createElement('div');
+  tmp.innerHTML = pg.html;
+  [...tmp.childNodes].forEach(n => idoc.body.appendChild(n));
+  $('#frame').style.background = bg;
+  // Position & progress
+  const total = pages.length;
+  const pct = total <= 1 ? 100 : Math.round((i / (total-1)) * 100);
+  $('#pvPos').textContent = `${i+1} / ${total}`;
+  $('#pvBar').style.width = pct + '%';
+  $('#pvTitle').textContent = pg.title || (m.title || 'প্রিভিউ');
+  // Buttons
+  $('#pvPrev').disabled = i <= 0;
+  $('#pvNext').disabled = i >= total-1;
+  // Unlock button (if locked page)
+  const unlock = idoc.getElementById('pvUnlock');
+  if(unlock){
+    unlock.onclick = () => {
+      PV.limit = 0; // lift limit for this session
+      buildPreviewPages();
+      PV.i = Math.min(PV.i, PV.pages.length-1);
+      renderPreviewPage();
+      renderPvToc();
+      toast('সম্পূর্ণ বই আনলক হয়েছে — এখন সব অধ্যায় দেখতে পারবেন');
+    };
+  }
+  // Scroll top
+  idoc.defaultView.scrollTo(0,0);
+}
+
+function renderPvToc(){
+  const ol = $('#pvTocList');
+  ol.innerHTML = '';
+  PV.pages.forEach((pg,i)=>{
+    const li = document.createElement('li');
+    const b = document.createElement('button');
+    b.textContent = pg.title || ('পৃষ্ঠা '+(i+1));
+    if(pg.type === 'locked') b.style.opacity = '.7';
+    b.onclick = () => { PV.i = i; renderPreviewPage(); $('#pvDrawer').hidden = true; };
+    li.appendChild(b); ol.appendChild(li);
+  });
+}
+
+function openPreview(){
+  commit();
+  PV.i = 0;
+  PV.fs = +localStorage.getItem('pvfs') || 100;
+  PV.theme = +localStorage.getItem('pvth') || 0;
+  // Sample limit: first 3 chapters by default (configurable)
+  PV.limit = 3;
+  buildPreviewPages();
+  renderPvToc();
+  $('#pvDrawer').hidden = true;
+  $('#modal').hidden = false;
+  document.body.style.overflow = 'hidden';
+  renderPreviewPage();
+}
+
+function closePreview(){
+  $('#modal').hidden = true;
+  document.body.style.overflow = '';
+  $('#pvDrawer').hidden = true;
+}
+
+$('#btnPreview').onclick = openPreview;
+$('#btnClose').onclick = closePreview;
+$('#pvPrev').onclick = () => { if(PV.i > 0){ PV.i--; renderPreviewPage(); } };
+$('#pvNext').onclick = () => { if(PV.i < PV.pages.length-1){ PV.i++; renderPreviewPage(); } };
+$('#pvMinus').onclick = () => {
+  PV.fs = Math.max(70, PV.fs - 10);
+  try{ localStorage.setItem('pvfs', PV.fs); }catch(e){}
+  renderPreviewPage();
+};
+$('#pvPlus').onclick = () => {
+  PV.fs = Math.min(220, PV.fs + 10);
+  try{ localStorage.setItem('pvfs', PV.fs); }catch(e){}
+  renderPreviewPage();
+};
+$('#pvTheme').onclick = () => {
+  PV.theme = (PV.theme + 1) % 3;
+  try{ localStorage.setItem('pvth', PV.theme); }catch(e){}
+  renderPreviewPage();
+};
+$('#pvToc').onclick = () => { $('#pvDrawer').hidden = !$('#pvDrawer').hidden; };
+document.addEventListener('keydown', e => {
+  if($('#modal').hidden) return;
+  if(e.key === 'Escape') closePreview();
+  else if(e.key === 'ArrowRight') $('#pvNext').click();
+  else if(e.key === 'ArrowLeft') $('#pvPrev').click();
+});
 
 /* ---------- EPUB export ---------- */
 $('#btnEpub').onclick=async()=>{

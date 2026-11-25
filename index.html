@@ -123,8 +123,24 @@
 </main>
 
 <div id="modal" class="modal" hidden>
-  <div class="modalBar"><strong>প্রিভিউ</strong><button id="btnClose" class="ghost">বন্ধ করুন</button></div>
-  <iframe id="frame" title="প্রিভিউ"></iframe>
+  <div class="modalBar">
+    <strong id="pvTitle">প্রিভিউ</strong>
+    <span id="pvPos" class="pvPos"></span>
+    <button id="pvMinus" class="ghost" title="ফন্ট ছোট">A−</button>
+    <button id="pvPlus" class="ghost" title="ফন্ট বড়">A+</button>
+    <button id="pvTheme" class="ghost" title="রং পরিবর্তন">রং</button>
+    <button id="pvToc" class="ghost" title="সূচিপত্র">সূচি</button>
+    <button id="btnClose" class="ghost">বন্ধ করুন</button>
+  </div>
+  <div class="pvBody">
+    <iframe id="frame" title="প্রিভিউ"></iframe>
+    <aside id="pvDrawer" class="rDrawer" hidden><ol id="pvTocList"></ol></aside>
+  </div>
+  <div class="rNav">
+    <button id="pvPrev">‹ আগের অধ্যায়</button>
+    <div class="pvProgress"><div id="pvBar"></div></div>
+    <button id="pvNext">পরের অধ্যায় ›</button>
+  </div>
 </div>
 <div id="reader" class="reader" hidden>
   <div class="rBar">
