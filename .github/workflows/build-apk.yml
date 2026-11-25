@@ -25,7 +25,9 @@ jobs:
           java-version: 17
 
       - name: Install dependencies
-        run: npm install
+        run: |
+          npm install
+          npm install @capacitor/app@^6.0.0 pdfjs-dist@3.11.174
 
       - name: Prepare web assets
         run: |
