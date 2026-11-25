@@ -47,6 +47,15 @@
         <input type="file" id="fileCover" accept="image/*" hidden>
       </div>
     </section>
+    
+    <section>
+      <h2>প্রিভিউ সেটিংস</h2>
+      <label>প্রিভিউ সীমা (কত অধ্যায় দেখাবে)
+        <input type="number" id="previewLimit" min="1" max="100" value="3">
+      </label>
+      <p style="font-size:12px; color:var(--muted); margin-top:-5px;">পুরো বই না দেখিয়ে শুধু প্রথম কয়েকটি অধ্যায় দেখানোর জন্য।</p>
+    </section>
+
     <section>
       <div class="row between"><h2>অধ্যায়</h2><button id="btnAdd" class="ghost">+ নতুন</button></div>
       <ol id="chapters" class="chapters"></ol>
@@ -122,26 +131,22 @@
   </section>
 </main>
 
+<!-- Preview Modal -->
 <div id="modal" class="modal" hidden>
   <div class="modalBar">
-    <strong id="pvTitle">প্রিভিউ</strong>
-    <span id="pvPos" class="pvPos"></span>
-    <button id="pvMinus" class="ghost" title="ফন্ট ছোট">A−</button>
-    <button id="pvPlus" class="ghost" title="ফন্ট বড়">A+</button>
-    <button id="pvTheme" class="ghost" title="রং পরিবর্তন">রং</button>
-    <button id="pvToc" class="ghost" title="সূচিপত্র">সূচি</button>
+    <strong>বইয়ের প্রিভিউ</strong>
+    <div class="preview-controls">
+      <button id="prevTheme" class="ghost" title="থিম পরিবর্তন">থিম</button>
+      <button id="prevFontMinus" class="ghost" title="ছোট">A−</button>
+      <button id="prevFontPlus" class="ghost" title="বড়">A+</button>
+    </div>
     <button id="btnClose" class="ghost">বন্ধ করুন</button>
   </div>
-  <div class="pvBody">
-    <iframe id="frame" title="প্রিভিউ"></iframe>
-    <aside id="pvDrawer" class="rDrawer" hidden><ol id="pvTocList"></ol></aside>
-  </div>
-  <div class="rNav">
-    <button id="pvPrev">‹ আগের অধ্যায়</button>
-    <div class="pvProgress"><div id="pvBar"></div></div>
-    <button id="pvNext">পরের অধ্যায় ›</button>
-  </div>
+  <div class="preview-progress"><div id="prevProgressBar"></div></div>
+  <iframe id="frame" title="প্রিভিউ" sandbox="allow-same-origin allow-scripts"></iframe>
 </div>
+
+<!-- Full Reader -->
 <div id="reader" class="reader" hidden>
   <div class="rBar">
     <button id="rClose" class="ghost" aria-label="বন্ধ করুন">✕</button>
@@ -152,7 +157,7 @@
     <button id="rToc" class="ghost">সূচি</button>
   </div>
   <div class="rBody">
-    <iframe id="rFrame" title="বই"></iframe>
+    <iframe id="rFrame" title="বই" sandbox="allow-same-origin allow-scripts"></iframe>
     <div id="rPdf" class="rPdf" hidden></div>
     <aside id="rDrawer" class="rDrawer" hidden><ol id="rTocList"></ol></aside>
   </div>
