@@ -20,7 +20,7 @@
     <button id="btnEpub" class="primary">EPUB তৈরি করুন</button>
   </nav>
   <input type="file" id="fileOpen" accept=".json,application/json" hidden>
-  <input type="file" id="fileRead" accept=".epub,.pdf,application/epub+zip,application/pdf" hidden>
+  <input type="file" id="fileRead" accept=".epub,.pdf,.txt,.html,.htm,application/epub+zip,application/pdf,text/plain,text/html" hidden>
 </header>
 
 <main class="layout">
@@ -47,13 +47,27 @@
         <input type="file" id="fileCover" accept="image/*" hidden>
       </div>
     </section>
-    
-    <section>
-      <h2>প্রিভিউ সেটিংস</h2>
-      <label>প্রিভিউ সীমা (কত অধ্যায় দেখাবে)
-        <input type="number" id="previewLimit" min="1" max="100" value="3">
-      </label>
-      <p style="font-size:12px; color:var(--muted); margin-top:-5px;">পুরো বই না দেখিয়ে শুধু প্রথম কয়েকটি অধ্যায় দেখানোর জন্য।</p>
+
+    <section class="pvConfig">
+      <h2>প্রিভিউ ও স্যাম্পল সেটিংস</h2>
+      <label class="chk"><input id="pvLimitOn" type="checkbox"> স্যাম্পল প্রিভিউ সীমাবদ্ধতা চালু করুন</label>
+      <div id="pvLimitFields" class="pvFields" hidden>
+        <label>সীমাবদ্ধতার ধরন
+          <select id="pvLimitType">
+            <option value="chapters">নির্দিষ্ট সংখ্যক অধ্যায় / পৃষ্ঠা</option>
+            <option value="percent">শতাংশ (%)</option>
+          </select>
+        </label>
+        <label><span id="pvLimitValLabel">ফ্রি অধ্যায়/পৃষ্ঠা সংখ্যা</span>
+          <input id="pvLimitVal" type="number" min="1" max="100" value="2">
+        </label>
+        <label>আনলক বাটন / ক্রয় লিংক (ঐচ্ছিক)
+          <input id="pvBuyUrl" type="url" placeholder="https://example.com/buy-book">
+        </label>
+        <label>আনলক বার্তা
+          <input id="pvCtaText" type="text" value="সম্পূর্ণ বইটি পড়তে আনলক করুন বা কিনুন">
+        </label>
+      </div>
     </section>
 
     <section>
@@ -131,38 +145,105 @@
   </section>
 </main>
 
-<!-- Preview Modal -->
-<div id="modal" class="modal" hidden>
-  <div class="modalBar">
-    <strong>বইয়ের প্রিভিউ</strong>
-    <div class="preview-controls">
-      <button id="prevTheme" class="ghost" title="থিম পরিবর্তন">থিম</button>
-      <button id="prevFontMinus" class="ghost" title="ছোট">A−</button>
-      <button id="prevFontPlus" class="ghost" title="বড়">A+</button>
-    </div>
-    <button id="btnClose" class="ghost">বন্ধ করুন</button>
-  </div>
-  <div class="preview-progress"><div id="prevProgressBar"></div></div>
-  <iframe id="frame" title="প্রিভিউ" sandbox="allow-same-origin allow-scripts"></iframe>
-</div>
-
-<!-- Full Reader -->
-<div id="reader" class="reader" hidden>
+<!-- Unified Interactive Book Preview & Reader Shell -->
+<div id="reader" class="reader protected-content" hidden>
   <div class="rBar">
-    <button id="rClose" class="ghost" aria-label="বন্ধ করুন">✕</button>
-    <div class="rInfo"><strong id="rTitle"></strong><span id="rPos"></span></div>
-    <button id="rMinus" class="ghost" aria-label="ছোট">A−</button>
-    <button id="rPlus" class="ghost" aria-label="বড়">A+</button>
-    <button id="rTheme" class="ghost">রং</button>
-    <button id="rToc" class="ghost">সূচি</button>
+    <button id="rClose" class="ghost" aria-label="বন্ধ করুন" title="বন্ধ করুন">✕</button>
+    <div class="rInfo">
+      <strong id="rTitle"></strong>
+      <span id="rPos"></span>
+    </div>
+    <div class="rActions">
+      <button id="rBookmarkBtn" class="ghost" title="বুকমার্ক যুক্ত করুন">☆</button>
+      <button id="rSettingsBtn" class="ghost" title="পড়ার সেটিংস">Aa</button>
+      <button id="rToc" class="ghost" title="সূচিপত্র ও বুকমার্ক">সূচি</button>
+    </div>
   </div>
+
+  <!-- Reading Progress Bar -->
+  <div class="rProgressTrack" title="পড়ার অগ্রগতি">
+    <div id="rProgressFill" class="rProgressFill" style="width:0%"></div>
+  </div>
+
+  <!-- Typography & Theme Settings Popover -->
+  <div id="rSettingsPanel" class="rSettingsPanel" hidden>
+    <div class="rSetRow">
+      <span>ফন্ট সাইজ</span>
+      <div class="rBtnGroup">
+        <button id="rMinus" class="ghost">A−</button>
+        <span id="rFsLabel">100%</span>
+        <button id="rPlus" class="ghost">A+</button>
+      </div>
+    </div>
+    <div class="rSetRow" id="rLineHeightRow">
+      <span>লাইন স্পেসিং</span>
+      <div class="rBtnGroup">
+        <button data-lh="1.5" class="ghost lh-btn">কম</button>
+        <button data-lh="1.85" class="ghost lh-btn active">মাঝারি</button>
+        <button data-lh="2.2" class="ghost lh-btn">বেশি</button>
+      </div>
+    </div>
+    <div class="rSetRow" id="rThemeRow">
+      <span>থিম মোড</span>
+      <div class="rThemeSwatches">
+        <button data-th="0" class="th-btn active" style="background:#ffffff;color:#111;border:1px solid #ccc">Light</button>
+        <button data-th="1" class="th-btn" style="background:#f4ecd8;color:#3b2f1e;border:1px solid #d5c7a3">Sepia</button>
+        <button data-th="2" class="th-btn" style="background:#14181f;color:#d8dde6;border:1px solid #333">Dark</button>
+      </div>
+    </div>
+    <div class="rSetRow" id="rPreviewLimitQuickRow">
+      <span>স্যাম্পল লিমিট</span>
+      <select id="rQuickLimit">
+        <option value="0">সম্পূর্ণ বই (কোনো সীমা নেই)</option>
+        <option value="1">প্রথম ১টি অধ্যায়/পৃষ্ঠা</option>
+        <option value="2">প্রথম ২টি অধ্যায়/পৃষ্ঠা</option>
+        <option value="3">প্রথম ৩টি অধ্যায়/পৃষ্ঠা</option>
+        <option value="20p">প্রথম ২০%</option>
+        <option value="30p">প্রথম ৩০%</option>
+      </select>
+    </div>
+  </div>
+
   <div class="rBody">
     <iframe id="rFrame" title="বই" sandbox="allow-same-origin allow-scripts"></iframe>
     <div id="rPdf" class="rPdf" hidden></div>
-    <aside id="rDrawer" class="rDrawer" hidden><ol id="rTocList"></ol></aside>
+
+    <!-- Sample Limit Paywall / Unlock Overlay -->
+    <div id="rPaywall" class="rPaywall" hidden>
+      <div class="rPaywallCard">
+        <div class="rLockIcon">🔒</div>
+        <h3>ফ্রি প্রিভিউ সীমা শেষ হয়েছে</h3>
+        <p id="rPaywallMsg">আপনি এই বইটির ফ্রি স্যাম্পল অংশটুকু পড়ে ফেলেছেন। বাকি অধ্যায়গুলো পড়তে সম্পূর্ণ বইটি আনলক করুন।</p>
+        <div class="rPaywallStats" id="rPaywallStats"></div>
+        <div class="rPaywallBtns">
+          <button id="rUnlockBtn" class="primary">সম্পূর্ণ বই আনলক করুন</button>
+          <button id="rPaywallBackBtn" class="ghost">আগের অংশে ফিরে যান</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- TOC & Bookmarks Drawer -->
+    <aside id="rDrawer" class="rDrawer" hidden>
+      <div class="rDrawerTabs">
+        <button id="tabToc" class="active">সূচিপত্র</button>
+        <button id="tabBookmarks">বুকমার্ক (<span id="bmCount">0</span>)</button>
+      </div>
+      <div id="paneToc" class="rDrawerPane">
+        <ol id="rTocList"></ol>
+      </div>
+      <div id="paneBookmarks" class="rDrawerPane" hidden>
+        <ul id="rBmList" class="rBmList"></ul>
+      </div>
+    </aside>
   </div>
-  <div class="rNav"><button id="rPrev">‹ আগের</button><button id="rNext">পরের ›</button></div>
+
+  <div class="rNav">
+    <button id="rPrev">‹ আগের</button>
+    <span id="rProgressText" class="rProgressText">০% পড়া হয়েছে</span>
+    <button id="rNext">পরের ›</button>
+  </div>
 </div>
+
 <div id="toast" class="toast" role="status" hidden></div>
 
 <script src="lib/jszip.min.js" onerror="document.write('<script src=&quot;https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js&quot;><\/script>')"></script>
