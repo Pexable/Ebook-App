@@ -30,12 +30,47 @@ jobs:
       - name: Prepare web assets
         run: |
           mkdir -p www/lib
-          cp index.html style.css app.js www/
+          cp index.html style.css app.js reader.js www/
           cp node_modules/jszip/dist/jszip.min.js www/lib/
+          cp node_modules/pdfjs-dist/build/pdf.min.js www/lib/
+          cp node_modules/pdfjs-dist/build/pdf.worker.min.js www/lib/
 
       - name: Create Android project
         run: |
           npx cap add android
+
+      - name: Register app as EPUB/PDF viewer ("Open with")
+        run: |
+          python3 - <<'PY'
+          p = 'android/app/src/main/AndroidManifest.xml'
+          s = open(p, encoding='utf-8').read()
+          filters = r'''
+                      <intent-filter>
+                          <action android:name="android.intent.action.VIEW" />
+                          <category android:name="android.intent.category.DEFAULT" />
+                          <category android:name="android.intent.category.BROWSABLE" />
+                          <data android:scheme="content" />
+                          <data android:scheme="file" />
+                          <data android:mimeType="application/epub+zip" />
+                          <data android:mimeType="application/pdf" />
+                      </intent-filter>
+                      <intent-filter>
+                          <action android:name="android.intent.action.VIEW" />
+                          <category android:name="android.intent.category.DEFAULT" />
+                          <data android:scheme="content" />
+                          <data android:scheme="file" />
+                          <data android:host="*" />
+                          <data android:mimeType="*/*" />
+                          <data android:pathPattern=".*\\.epub" />
+                          <data android:pathPattern=".*\\..*\\.epub" />
+                          <data android:pathPattern=".*\\..*\\..*\\.epub" />
+                      </intent-filter>
+          '''
+          assert '</activity>' in s
+          s = s.replace('</activity>', filters + '        </activity>', 1)
+          open(p, 'w', encoding='utf-8').write(s)
+          PY
+          cat android/app/src/main/AndroidManifest.xml
           npx cap sync android
 
       - name: Build debug APK
