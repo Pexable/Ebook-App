@@ -1,21 +1,13 @@
-# ইবুক মেকার
-
-ব্রাউজারে চলা EPUB 3 ইবুক মেকার। কোনো সার্ভার বা বিল্ড টুল লাগে না।
-
-## ফিচার
-- বইয়ের নাম, লেখক, ভাষা, বিবরণ ও কভার ছবি
-- অধ্যায় যোগ, মোছা, ওপরে-নিচে সাজানো
-- রিচ টেক্সট এডিটর (বোল্ড, ইটালিক, শিরোনাম, উদ্ধৃতি, তালিকা, অ্যালাইনমেন্ট)
-- লাইভ প্রিভিউ
-- `.epub` ডাউনলোড (সূচিপত্রসহ)
-- ব্রাউজারে অটো-সেভ, আর `.ebook.json` ফাইলে প্রজেক্ট ব্যাকআপ/রিস্টোর
-
-## GitHub Pages-এ চালু করা
-1. GitHub-এ নতুন repository বানান (যেমন `ebook-maker`)।
-2. `index.html`, `style.css`, `app.js`, `README.md` আপলোড করুন (Add file → Upload files)।
-3. Settings → Pages → Source: `Deploy from a branch` → Branch: `main` / `(root)` → Save।
-4. কয়েক মিনিট পর `https://<আপনার-username>.github.io/ebook-maker/` লিংকে অ্যাপ চালু হবে।
-
-## নোট
-- JSZip লোড হয় cdnjs থেকে, তাই EPUB বানাতে ইন্টারনেট লাগবে।
-- অটো-সেভ শুধু ওই ব্রাউজারে থাকে; নিয়মিত "প্রজেক্ট সেভ" দিয়ে ব্যাকআপ রাখুন।
+Ebook Maker
+Live demo: https://pexable.github.io/ebook-maker/
+Features
+Book metadata: title, author, language (Bangla, English, Hindi, Arabic) and description
+Cover image: upload once; it is automatically resized and compressed
+Chapter management: add, delete and reorder chapters
+Rich-text editor: bold, italic, underline, headings, blockquotes, lists and text alignment
+Live preview: read the book as a continuous document before exporting
+EPUB 3 export: includes cover page, navigation document (table of contents) and package metadata
+Autosave: work is stored in the browser's localStorage
+Project backup: save and restore the full project as a .ebook.json file
+Responsive and accessible: works on desktop and mobile, supports light and dark mode, keyboard focus is visible
+Bangla-first UI: interface text and default fonts are tuned for Bangla
