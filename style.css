@@ -24,7 +24,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 .side section,.editor{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:14px}
 h2{font-size:16px;margin:0 0 10px}
 label{display:block;font-size:14px;color:var(--muted);margin-bottom:10px}
-input[type=text],select,textarea{display:block;width:100%;margin-top:4px;padding:8px 10px;font:inherit;color:var(--ink);background:var(--page);border:1px solid var(--line);border-radius:6px}
+input[type=text],input[type=number],select,textarea{display:block;width:100%;margin-top:4px;padding:8px 10px;font:inherit;color:var(--ink);background:var(--page);border:1px solid var(--line);border-radius:6px}
 .row{display:flex;gap:8px}.between{justify-content:space-between;align-items:center}
 .cover .coverBox{height:150px;border:1px dashed var(--line);border-radius:6px;display:grid;place-items:center;color:var(--muted);margin-bottom:8px;overflow:hidden;background:var(--page)}
 .coverBox img{height:100%;width:100%;object-fit:contain}
@@ -46,6 +46,9 @@ input[type=text],select,textarea{display:block;width:100%;margin-top:4px;padding
 .modal{position:fixed;inset:0;background:var(--bg);z-index:10;display:flex;flex-direction:column}
 .modal[hidden]{display:none}
 .modalBar{display:flex;justify-content:space-between;align-items:center;padding:10px 16px;background:var(--panel);border-bottom:1px solid var(--line)}
+.preview-controls{display:flex;gap:8px}
+.preview-progress{height:4px;background:var(--line);width:100%;}
+#prevProgressBar{height:100%;background:var(--cloth);width:0%;transition:width 0.1s;}
 #frame{flex:1;border:0;background:#fff}
 .toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:6px;z-index:20;max-width:90vw}
 .toast[hidden]{display:none}
@@ -99,18 +102,3 @@ textarea.src{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:14px;li
 .rDrawer button:hover{background:var(--page)}
 .rNav{display:flex;gap:8px;padding:8px 10px;background:var(--panel);border-top:1px solid var(--line)}
 .rNav button{flex:1}
-
-/* ---------- enhanced preview modal ---------- */
-.modal .modalBar{display:flex;align-items:center;gap:6px;padding:8px 10px;background:var(--cloth);color:#fff;flex-wrap:wrap}
-.modal .modalBar .ghost{background:transparent;color:#fff;border-color:rgba(255,255,255,.45);padding:6px 10px}
-.modal .modalBar strong{font-size:15px;margin-right:auto}
-.pvPos{font-size:12px;opacity:.9;margin-right:8px}
-.pvBody{flex:1;position:relative;min-height:0;display:flex}
-#frame{flex:1;border:0;background:#fff;width:100%;height:100%}
-.pvProgress{flex:1;height:6px;background:var(--line);border-radius:3px;align-self:center;overflow:hidden;margin:0 8px}
-#pvBar{height:100%;width:0;background:var(--cloth);transition:width .25s}
-.pvLocked{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;padding:24px;text-align:center;background:var(--page);color:var(--ink)}
-.pvLocked h2{margin:0 0 12px;font-size:1.4em}
-.pvLocked p{margin:0 0 20px;color:var(--muted);max-width:28em}
-.pvLocked .cta{background:var(--cloth);color:#fff;border:0;padding:12px 24px;font-size:16px;font-weight:600;border-radius:8px}
-.pvLocked .cta:hover{background:var(--cloth-d)}
