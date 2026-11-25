@@ -11,7 +11,8 @@ A lightweight, browser-based EPUB 3 ebook creator. Write chapters in a rich-text
 - **Book metadata:** title, author, language (Bangla, English, Hindi, Arabic) and description
 - **Cover image:** upload once; it is automatically resized and compressed
 - **Chapter management:** add, delete and reorder chapters
-- **Rich-text editor:** bold, italic, underline, headings, blockquotes, lists and text alignment
+- **Two writing modes (per chapter):** *HTML* (formatted text) or *Plain text* (no formatting; blank line = new paragraph)
+- **Rich-text editor (HTML mode):** bold, italic, underline, text colour, headings, blockquotes, lists and text alignment; pasted formatting (colour, bold, italic) is kept, and a **</> code** button lets you view and edit the raw HTML
 - **Inline images:** insert or paste images into chapters, resize them (small, medium, full), align them, and add captions and alt text; images are compressed automatically and embedded in the EPUB
 - **Table of contents page:** generated automatically from chapter titles, or written manually; can be switched off
 - **Live preview:** read the book as a continuous document before exporting
@@ -86,6 +87,10 @@ Open the APK, and allow *Install unknown apps* for your browser or file manager 
 
 In the Android app, **Create EPUB** and **Save project** open the system share sheet, so the file can be saved to Files or Drive, or opened in a reader.
 
+**Open EPUB/PDF files from other apps**
+
+The workflow adds `VIEW` intent-filters to `AndroidManifest.xml`, so the app appears in Android's *Open with* list for `.epub` and `.pdf` files (WhatsApp, Files, browser downloads). The file is read via `@capacitor/app` + `@capacitor/filesystem` and shown in the built-in reader.
+
 ## Project Structure
 
 ```
@@ -94,6 +99,7 @@ ebook-maker/
 ├── index.html                        # Page structure and UI
 ├── style.css                         # Styling (light/dark themes, responsive layout)
 ├── app.js                            # State, editor, preview and EPUB generation
+├── reader.js                         # EPUB/PDF reader + Android "Open with" handling
 ├── capacitor.config.json             # Android wrapper configuration
 ├── package.json                      # Capacitor and JSZip dependencies
 └── README.md
