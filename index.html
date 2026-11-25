@@ -55,6 +55,10 @@
 
   <section class="editor">
     <input id="cTitle" class="chTitle" type="text" placeholder="অধ্যায়ের নাম">
+    <div id="modeBar" class="modeBar" role="group" aria-label="লেখার ধরন">
+      <button type="button" data-mode="html" title="রং, বোল্ড, ইটালিক ইত্যাদি সহ ফরম্যাটেড লেখা">এইচটিএমএল</button>
+      <button type="button" data-mode="text" title="কোনো ফরম্যাট ছাড়া সাধারণ লেখা">সাধারণ টেক্সট</button>
+    </div>
     <div id="tocBar" class="tocBar" hidden>
       <label class="chk"><input id="tocOn" type="checkbox"> বইয়ে সূচিপত্র পেজ রাখুন</label>
       <label>সূচিপত্র তৈরির ধরন
@@ -69,6 +73,16 @@
       <button data-cmd="italic" title="ইটালিক"><i>I</i></button>
       <button data-cmd="underline" title="আন্ডারলাইন"><u>U</u></button>
       <span class="sep"></span>
+      <span class="clrs" role="group" aria-label="লেখার রং">
+        <button class="sw" data-color="#d32f2f" style="background:#d32f2f" title="লাল" aria-label="লাল"></button>
+        <button class="sw" data-color="#1565c0" style="background:#1565c0" title="নীল" aria-label="নীল"></button>
+        <button class="sw" data-color="#2e7d32" style="background:#2e7d32" title="সবুজ" aria-label="সবুজ"></button>
+        <button class="sw" data-color="#ef6c00" style="background:#ef6c00" title="কমলা" aria-label="কমলা"></button>
+        <button class="sw" data-color="#6a1b9a" style="background:#6a1b9a" title="বেগুনি" aria-label="বেগুনি"></button>
+        <label class="clr" title="অন্য রং বাছুন">রং <input type="color" id="fgColor" value="#1565c0"></label>
+      </span>
+      <button data-cmd="removeFormat" title="ফরম্যাট মুছুন">ফরম্যাট মুছুন</button>
+      <span class="sep"></span>
       <button data-cmd="formatBlock" data-val="h1">শিরোনাম ১</button>
       <button data-cmd="formatBlock" data-val="h2">শিরোনাম ২</button>
       <button data-cmd="formatBlock" data-val="p">অনুচ্ছেদ</button>
@@ -82,6 +96,7 @@
       <button data-cmd="justifyFull">সমান</button>
       <span class="sep"></span>
       <button id="btnImg" title="ছবি যোগ করুন">ছবি</button>
+      <button id="btnSrc" title="এইচটিএমএল কোড দেখুন/লিখুন">&lt;/&gt; কোড</button>
       <span class="sep"></span>
       <button data-cmd="undo">আনডু</button>
       <button data-cmd="redo">রিডু</button>
@@ -101,6 +116,8 @@
     </div>
     <input type="file" id="fileImg" accept="image/*" multiple hidden>
     <div id="body" class="page" contenteditable="true" spellcheck="false" aria-label="অধ্যায়ের লেখা"></div>
+    <textarea id="plain" class="page plain" hidden spellcheck="false" aria-label="সাধারণ টেক্সট" placeholder="এখানে সাধারণ টেক্সট লিখুন। ফাঁকা লাইন দিলে নতুন অনুচ্ছেদ হবে।"></textarea>
+    <textarea id="srcBox" class="page plain src" hidden spellcheck="false" aria-label="এইচটিএমএল কোড"></textarea>
     <div class="status"><span id="stat"></span><span id="saved">অটো-সেভ চালু</span></div>
   </section>
 </main>

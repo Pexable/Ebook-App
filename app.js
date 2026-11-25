@@ -5,12 +5,13 @@ const uid = () => Math.random().toString(36).slice(2, 9);
 const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 const fresh = () => ({ meta:{title:'',author:'',lang:'bn',desc:''}, cover:null, cur:0,
   toc:{on:true,title:'সূচিপত্র',auto:true,html:''},
-  chapters:[{id:uid(),title:'অধ্যায় ১',html:'<p><br></p>'}] });
+  chapters:[{id:uid(),title:'অধ্যায় ১',html:'<p><br></p>',mode:'html'}] });
 const norm = d => { const f=fresh(); if(!d||!d.meta||!Array.isArray(d.chapters)||!d.chapters.length) return f;
   const s={...f,...d,toc:{...f.toc,...(d.toc||{})}}; if(s.cur>=s.chapters.length||s.cur<-1) s.cur=0; return s; };
 
 let S=null, timer, selFig=null, lastRange=null;
-const body=$('#body');
+const body=$('#body'), plain=$('#plain'), srcBox=$('#srcBox');
+let srcOn=false;
 
 /* ---------- storage (IndexedDB: large enough for images) ---------- */
 const idb={
@@ -25,10 +26,50 @@ const clean = h => h.replace(/ sel(?=")/g,'');
 function commit(){
   if(!S) return;
   if(S.cur===-1){ if(!S.toc.auto) S.toc.html=clean(body.innerHTML); return; }
-  const c=S.chapters[S.cur]; if(c) c.html=clean(body.innerHTML);
+  const c=S.chapters[S.cur]; if(c) c.html=c.mode==='text'?plain.value:clean(body.innerHTML);
 }
 const tocAuto=()=>'<ol>'+S.chapters.map((c,i)=>`<li>${esc(c.title||'অধ্যায় '+(i+1))}</li>`).join('')+'</ol>';
-function words(){ const t=body.innerText.trim(); return t?t.split(/\s+/).length:0; }
+const isText=()=>S&&S.cur!==-1&&S.chapters[S.cur]&&S.chapters[S.cur].mode==='text';
+function words(){ const t=(isText()?plain.value:body.innerText).trim(); return t?t.split(/\s+/).length:0; }
+
+/* ---------- HTML sanitiser / text <-> HTML ---------- */
+const SAFE=new Set('B STRONG I EM U S SPAN P BR H1 H2 BLOCKQUOTE UL OL LI DIV A SUB SUP HR'.split(' '));
+const SAFE_IMG=new Set([...SAFE,'FIGURE','FIGCAPTION','IMG']);
+const KEEP_CSS=['color','background-color','font-weight','font-style','text-decoration','text-align','width'];
+const DROP=/^(SCRIPT|STYLE|IFRAME|OBJECT|EMBED|LINK|META|TITLE|NOSCRIPT|TEMPLATE|SVG|MATH|FORM|INPUT|BUTTON|TEXTAREA|SELECT)$/;
+function sanitize(h,imgs){
+  const d=new DOMParser().parseFromString('<body>'+h+'</body>','text/html'), ok=imgs?SAFE_IMG:SAFE;
+  (function walk(n){
+    [...n.childNodes].forEach(c=>{
+      if(c.nodeType===3) return;
+      if(c.nodeType!==1) return c.remove();
+      if(DROP.test(c.tagName)) return c.remove();
+      if(c.tagName==='FONT'){ const s=d.createElement('span'); if(c.getAttribute('color')) s.style.color=c.getAttribute('color'); s.append(...c.childNodes); c.replaceWith(s); c=s; }
+      walk(c);
+      if(!ok.has(c.tagName)) return c.replaceWith(...c.childNodes);
+      const css=KEEP_CSS.filter(p=>c.style.getPropertyValue(p)&&(p!=='width'||imgs)).map(p=>[p,c.style.getPropertyValue(p)]);
+      const g=k=>c.getAttribute(k), cls=g('class'), sv=g('src'), alt=g('alt'), href=g('href'), ce=g('contenteditable');
+      [...c.attributes].forEach(a=>c.removeAttribute(a.name));
+      css.forEach(([p,v])=>c.style.setProperty(p,v));
+      if(imgs){ if(cls) c.setAttribute('class',cls.replace(/[^\w\- ]/g,'')); if(ce!==null) c.setAttribute('contenteditable',ce); }
+      if(c.tagName==='IMG'){ if(sv&&/^data:image\//i.test(sv)){ c.setAttribute('src',sv); c.setAttribute('alt',alt||''); } else c.remove(); }
+      if(c.tagName==='A'&&href&&/^(https?:|mailto:|#)/i.test(href)) c.setAttribute('href',href);
+    });
+  })(d.body);
+  return d.body.innerHTML;
+}
+function textToHtml(t){
+  const ps=String(t).replace(/\r\n?/g,'\n').split(/\n{2,}/).map(s=>s.trim()).filter(Boolean);
+  return ps.length?ps.map(p=>'<p>'+esc(p).replace(/\n/g,'<br>')+'</p>').join(''):'<p><br></p>';
+}
+function htmlToText(h){
+  const d=new DOMParser().parseFromString('<body>'+h+'</body>','text/html');
+  d.querySelectorAll('br').forEach(b=>b.replaceWith('\n'));
+  d.querySelectorAll('li').forEach(l=>l.append('\n'));
+  const out=[]; d.body.childNodes.forEach(n=>{ const t=(n.textContent||'').replace(/ /g,' ').trim(); if(t) out.push(t); });
+  return out.join('\n\n');
+}
+const ch2html=c=>c.mode==='text'?textToHtml(c.html):c.html;   // text-mode chapters store raw text in c.html
 const fileName=()=>(S.meta.title.trim()||'ebook').replace(/[\\/:*?"<>|]+/g,'').replace(/\s+/g,'-');
 
 async function download(blob, name){
@@ -69,15 +110,16 @@ function renderList(){
   });
 }
 function renderPane(){
-  const toc=S.cur===-1; lastRange=null; deselect();
+  const toc=S.cur===-1; lastRange=null; deselect(); srcOn=false;
   $('#tocBar').hidden=!toc;
   if(toc){
     $('#cTitle').value=S.toc.title; $('#tocOn').checked=S.toc.on; $('#tocMode').value=S.toc.auto?'auto':'manual';
     body.innerHTML=S.toc.auto?tocAuto():(S.toc.html||'<p><br></p>'); body.contentEditable=S.toc.auto?'false':'true';
   } else {
-    const c=S.chapters[S.cur]; $('#cTitle').value=c.title; body.innerHTML=c.html; body.contentEditable='true';
+    const c=S.chapters[S.cur]; $('#cTitle').value=c.title; body.contentEditable='true';
+    if(c.mode==='text') plain.value=c.html; else body.innerHTML=c.html;
   }
-  $('#toolbar').classList.toggle('off',body.contentEditable==='false');
+  showMode();
 }
 function select(i){ commit(); S.cur=i; renderPane(); renderList(); stat(); }
 function goEditor(){ if(window.innerWidth<=820) $('.editor').scrollIntoView({behavior:'smooth',block:'start'}); }
@@ -96,7 +138,7 @@ function act(i,a){
 }
 
 /* ---------- events ---------- */
-$('#btnAdd').onclick=()=>{ commit(); S.chapters.push({id:uid(),title:`অধ্যায় ${S.chapters.length+1}`,html:'<p><br></p>'}); select(S.chapters.length-1); save(); $('#cTitle').focus(); };
+$('#btnAdd').onclick=()=>{ commit(); S.chapters.push({id:uid(),title:`অধ্যায় ${S.chapters.length+1}`,html:'<p><br></p>',mode:'html'}); select(S.chapters.length-1); save(); $('#cTitle').focus(); };
 $('#cTitle').oninput=e=>{ if(S.cur===-1) S.toc.title=e.target.value; else S.chapters[S.cur].title=e.target.value; renderList(); queueSave(); };
 $('#tocOn').onchange=e=>{ S.toc.on=e.target.checked; renderList(); queueSave(); };
 $('#tocMode').onchange=e=>{ const auto=e.target.value==='auto'; if(auto===S.toc.auto) return; commit(); if(!auto&&!S.toc.html) S.toc.html=tocAuto(); S.toc.auto=auto; renderPane(); renderList(); queueSave(); };
@@ -105,13 +147,55 @@ body.addEventListener('paste',e=>{
   e.preventDefault(); const cd=e.clipboardData||window.clipboardData;
   const img=[...(cd.files||[])].find(f=>f.type.startsWith('image/'));
   if(img) return addImage(img);
-  document.execCommand('insertText',false,cd.getData('text/plain'));
+  const h=cd.getData('text/html');
+  if(h&&body.contentEditable==='true') document.execCommand('insertHTML',false,sanitize(h));
+  else document.execCommand('insertText',false,cd.getData('text/plain'));
 });
 [['#mTitle','title'],['#mAuthor','author'],['#mLang','lang'],['#mDesc','desc']].forEach(([s,k])=>$(s).addEventListener('input',e=>{ S.meta[k]=e.target.value; queueSave(); }));
 $$('.toolbar button[data-cmd]').forEach(b=>{
   b.onmousedown=e=>e.preventDefault();
   b.onclick=()=>{ body.focus(); document.execCommand(b.dataset.cmd,false,b.dataset.val||null); commit(); queueSave(); };
 });
+
+/* ---------- writing mode (HTML / plain text), colour, HTML source ---------- */
+function showMode(){
+  const toc=S.cur===-1, text=isText(), tb=$('#toolbar');
+  $('#modeBar').hidden=toc;
+  $$('#modeBar [data-mode]').forEach(b=>{ const on=b.dataset.mode===(text?'text':'html'); b.classList.toggle('on',on); b.setAttribute('aria-pressed',on); });
+  tb.hidden=text; tb.classList.toggle('off',body.contentEditable==='false'); tb.classList.toggle('srcmode',srcOn);
+  $('#btnSrc').classList.toggle('on',srcOn);
+  body.hidden=text||srcOn; plain.hidden=!text; srcBox.hidden=text||!srcOn;
+}
+$$('#modeBar [data-mode]').forEach(b=>b.onclick=()=>{
+  if(S.cur===-1) return;
+  commit(); const c=S.chapters[S.cur], to=b.dataset.mode;
+  if((c.mode||'html')===to) return;
+  if(to==='text'){
+    if(/<(?!\/?(p|br|div)\b)[a-z]/i.test(c.html)&&!confirm('সাধারণ টেক্সটে গেলে রং, বোল্ড, ছবি ইত্যাদি ফরম্যাট বাদ যাবে। চালিয়ে যাবেন?')) return;
+    c.html=htmlToText(c.html);
+  } else c.html=textToHtml(c.html);
+  c.mode=to; renderPane(); renderList(); stat(); save();
+  (to==='text'?plain:body).focus();
+});
+plain.oninput=()=>{ commit(); stat(); queueSave(); };
+$('#btnSrc').onclick=()=>{
+  if(isText()||body.contentEditable!=='true') return;
+  commit(); srcOn=!srcOn; deselect();
+  if(srcOn) srcBox.value=clean(body.innerHTML).replace(/<\/(p|h1|h2|blockquote|ul|ol|li|figure|div)>/g,'</$1>\n').trim();
+  showMode(); (srcOn?srcBox:body).focus();
+};
+srcBox.oninput=()=>{ body.innerHTML=sanitize(srcBox.value,true); commit(); stat(); queueSave(); };
+function applyColor(col){
+  if(isText()||srcOn||body.contentEditable!=='true') return;
+  body.focus();
+  if(lastRange&&body.contains(lastRange.startContainer)){ const s=getSelection(); s.removeAllRanges(); s.addRange(lastRange); }
+  document.execCommand('styleWithCSS',false,true);
+  document.execCommand('foreColor',false,col);
+  document.execCommand('styleWithCSS',false,false);
+  commit(); queueSave();
+}
+$$('#toolbar [data-color]').forEach(b=>{ b.onmousedown=e=>e.preventDefault(); b.onclick=()=>applyColor(b.dataset.color); });
+$('#fgColor').onchange=e=>applyColor(e.target.value);
 
 /* ---------- images ---------- */
 function readImg(file,max,byH,alpha){
@@ -209,7 +293,7 @@ $('#btnPreview').onclick=()=>{
   commit(); const m=S.meta;
   const front=`<div style="text-align:center;margin:12vh 0">${S.cover?`<img src="${S.cover}" style="max-height:60vh;max-width:90%"><br>`:''}<h1 style="text-align:center">${esc(m.title||'নামহীন বই')}</h1><p style="text-align:center">${esc(m.author)}</p></div><hr>`;
   const toc=S.toc.on?`<h1>${esc(S.toc.title)}</h1>${S.toc.auto?tocLinks().replace(/href="[^"]*"/g,''):toXhtml(S.toc.html)}<hr>`:'';
-  const chs=S.chapters.map(c=>`<h1>${esc(c.title)}</h1>${toXhtml(c.html)}<hr>`).join('');
+  const chs=S.chapters.map(c=>`<h1>${esc(c.title)}</h1>${toXhtml(ch2html(c))}<hr>`).join('');
   $('#frame').srcdoc=`<!DOCTYPE html><html lang="${m.lang}"><head><meta charset="utf-8"><style>${BOOK_CSS}body{max-width:46em;margin:0 auto;padding:20px;font-family:"Noto Serif Bengali",Georgia,serif;font-size:19px}</style></head><body>${front}${toc}${chs}</body></html>`;
   $('#modal').hidden=false;
 };
@@ -244,7 +328,7 @@ $('#btnEpub').onclick=async()=>{
     }
     S.chapters.forEach((c,i)=>{
       const f=`ch${i+1}.xhtml`;
-      o.file(f,page(c.title,`<h1>${esc(c.title)}</h1>\n${toXhtml(c.html,ctx)}`,L));
+      o.file(f,page(c.title,`<h1>${esc(c.title)}</h1>\n${toXhtml(ch2html(c),ctx)}`,L));
       manifest+=`<item id="ch${i+1}" href="${f}" media-type="application/xhtml+xml"/>`;
       spine+=`<itemref idref="ch${i+1}"/>`;
       navItems+=`<li><a href="${f}">${esc(c.title||'অধ্যায় '+(i+1))}</a></li>`;
