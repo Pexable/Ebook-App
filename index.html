@@ -13,12 +13,14 @@
   <h1>ইবুক মেকার</h1>
   <nav>
     <button id="btnNew" class="ghost">নতুন বই</button>
+    <button id="btnRead" class="ghost">বই পড়ুন</button>
     <button id="btnOpen" class="ghost">প্রজেক্ট খুলুন</button>
     <button id="btnSave" class="ghost">প্রজেক্ট সেভ</button>
     <button id="btnPreview" class="ghost">প্রিভিউ</button>
     <button id="btnEpub" class="primary">EPUB তৈরি করুন</button>
   </nav>
   <input type="file" id="fileOpen" accept=".json,application/json" hidden>
+  <input type="file" id="fileRead" accept=".epub,.pdf,application/epub+zip,application/pdf" hidden>
 </header>
 
 <main class="layout">
@@ -107,9 +109,26 @@
   <div class="modalBar"><strong>প্রিভিউ</strong><button id="btnClose" class="ghost">বন্ধ করুন</button></div>
   <iframe id="frame" title="প্রিভিউ"></iframe>
 </div>
+<div id="reader" class="reader" hidden>
+  <div class="rBar">
+    <button id="rClose" class="ghost" aria-label="বন্ধ করুন">✕</button>
+    <div class="rInfo"><strong id="rTitle"></strong><span id="rPos"></span></div>
+    <button id="rMinus" class="ghost" aria-label="ছোট">A−</button>
+    <button id="rPlus" class="ghost" aria-label="বড়">A+</button>
+    <button id="rTheme" class="ghost">রং</button>
+    <button id="rToc" class="ghost">সূচি</button>
+  </div>
+  <div class="rBody">
+    <iframe id="rFrame" title="বই"></iframe>
+    <div id="rPdf" class="rPdf" hidden></div>
+    <aside id="rDrawer" class="rDrawer" hidden><ol id="rTocList"></ol></aside>
+  </div>
+  <div class="rNav"><button id="rPrev">‹ আগের</button><button id="rNext">পরের ›</button></div>
+</div>
 <div id="toast" class="toast" role="status" hidden></div>
 
 <script src="lib/jszip.min.js" onerror="document.write('<script src=&quot;https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js&quot;><\/script>')"></script>
 <script src="app.js"></script>
+<script src="reader.js"></script>
 </body>
 </html>

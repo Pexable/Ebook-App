@@ -209,4 +209,35 @@ document.addEventListener('keydown',e=>{
   if($('#reader').hidden) return;
   if(e.key==='Escape') closeReader(); else if(e.key==='ArrowRight') next(); else if(e.key==='ArrowLeft') prev();
 });
+
+/* ---------- Android: "Open with" / file-manager / WhatsApp support ---------- */
+const cap=window.Capacitor, AppPlugin=cap&&cap.Plugins&&cap.Plugins.App;
+let lastUri='', lastAt=0;
+function b64ToBytes(b64){ const bin=atob(b64), u=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++) u[i]=bin.charCodeAt(i); return u; }
+async function openFromUri(uri){
+  if(!uri||!cap||!cap.Plugins||!cap.Plugins.Filesystem) return;
+  if(uri===lastUri&&Date.now()-lastAt<4000) return;           // cold start can report the same file twice
+  lastUri=uri; lastAt=Date.now();
+  try{
+    note('ফাইল খোলা হচ্ছে…');
+    const {data}=await cap.Plugins.Filesystem.readFile({path:uri});   // works with content:// and file://
+    const b=b64ToBytes(data);
+    const isPdf=b[0]===0x25&&b[1]===0x50&&b[2]===0x44&&b[3]===0x46;  // %PDF
+    const isZip=b[0]===0x50&&b[1]===0x4B;                            // PK (EPUB is a zip)
+    if(!isPdf&&!isZip) return note('শুধু .epub বা .pdf ফাইল খোলা যাবে');
+    const ext=isPdf?'pdf':'epub';
+    let name=''; try{ name=decodeURIComponent(uri.split('?')[0].split('/').pop()); }catch(e){}
+    if(!name.toLowerCase().endsWith('.'+ext)) name=(name.replace(/[^\w.\u0980-\u09FF-]+/g,'_')||'book')+'.'+ext;
+    await openBook(new File([b],name));
+  }catch(e){ console.error(e); note('ফাইলটি খোলা যায়নি'); }
+}
+if(AppPlugin){
+  AppPlugin.addListener('appUrlOpen',e=>openFromUri(e&&e.url));                       // app already running
+  AppPlugin.getLaunchUrl().then(r=>{ if(r&&r.url) openFromUri(r.url); }).catch(()=>{}); // app started by the file
+  AppPlugin.addListener('backButton',()=>{
+    if(!$('#reader').hidden) closeReader();
+    else if(!$('#modal').hidden) $('#btnClose').click();
+    else AppPlugin.exitApp();
+  });
+}
 })();
