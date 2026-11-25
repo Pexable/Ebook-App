@@ -93,6 +93,11 @@ button.danger { color: var(--danger); }
 .clr { display: inline-flex; align-items: center; gap: 3px; font-size: 0.8rem; padding: 2px 6px; border: 1px solid var(--border); border-radius: 4px; background: #fff; cursor: pointer; }
 .clr input { width: 16px; height: 16px; border: none; padding: 0; background: none; }
 
+.page, .plain, .chTitle {
+  -webkit-user-select: text !important;
+  user-select: text !important;
+  -webkit-touch-callout: default !important;
+}
 .page {
   min-height: 420px; padding: 16px; border: 1px solid var(--border); border-radius: 6px;
   font-family: "Noto Serif Bengali", Georgia, serif; font-size: 1.05rem; line-height: 1.8; background: #fff;
@@ -113,10 +118,11 @@ button.danger { color: var(--danger); }
 }
 .reader[hidden] { display: none !important; }
 
-/* Content Protection: deter casual copying/selection */
-.protected-content {
-  -webkit-user-select: none;
-  user-select: none;
+/* Allow free long-press text selection and copy-paste */
+.protected-content, .protected-content * {
+  -webkit-user-select: text;
+  user-select: text;
+  -webkit-touch-callout: default;
 }
 
 .rBar {
@@ -219,11 +225,33 @@ button.danger { color: var(--danger); }
 .rDrawerPane { flex: 1; overflow-y: auto; padding: 8px 0; }
 .rDrawerPane ol, .rBmList { list-style: none; padding: 0; margin: 0; }
 .rDrawerPane li { border-bottom: 1px solid #f0f2f5; }
-.rDrawerPane li button {
-  width: 100%; text-align: left; border: none; border-radius: 0; padding: 10px 14px;
-  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+.rTocItem { border-bottom: 1px solid var(--border); padding: 6px 10px; }
+.rTocItem.locked { opacity: 0.65; }
+.rTocMainRow { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.rTocGoBtn {
+  flex: 1; text-align: left; border: none; background: transparent; border-radius: 6px;
+  padding: 6px 6px; font-weight: 500; font-size: 0.9rem; display: flex; align-items: center; gap: 6px;
 }
-.rDrawerPane li.locked button { opacity: 0.65; }
+.rTocGoBtn:hover { background: var(--accent-bg); color: var(--primary); }
+.rTocInfoBtn {
+  border: 1px solid var(--border); background: #f8fafc; color: var(--muted);
+  border-radius: 6px; padding: 4px 8px; font-size: 0.78rem; font-weight: 500;
+}
+.rTocInfoBtn.open { background: var(--primary); color: #fff; border-color: var(--primary); }
+.rTocDetailBox {
+  margin-top: 6px; padding: 8px 10px; border-radius: 8px;
+  background: #f8fafc; border: 1px dashed var(--border);
+  font-size: 0.8rem; color: var(--muted); line-height: 1.45;
+}
+.rTocDetailBox[hidden] { display: none !important; }
+.rTocMetaBadges { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
+.rTocBadge {
+  background: #fff; border: 1px solid var(--border); border-radius: 999px;
+  padding: 2px 8px; font-size: 0.74rem; color: var(--text); font-weight: 500;
+}
+.rTocExcerpt { margin: 4px 0 6px; color: var(--text); font-style: italic; }
+.rTocSubList { margin: 4px 0 0; padding-left: 16px; font-size: 0.76rem; color: var(--muted); }
+.rTocSubList li { border: none; padding: 1px 0; }
 
 .rLastReadCard {
   margin: 8px 10px; padding: 10px; border-radius: 8px;

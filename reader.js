@@ -71,8 +71,9 @@ const BASE_CSS = `
     font-family: "Noto Serif Bengali", "Hind Siliguri", Georgia, serif;
     overflow-wrap: anywhere;
     word-break: break-word;
-    -webkit-user-select: none;
-    user-select: none;
+    -webkit-user-select: text;
+    user-select: text;
+    -webkit-touch-callout: default;
   }
   #rPageWrap {
     width: 100%;
@@ -119,7 +120,6 @@ const BASE_CSS = `
     width: auto !important;
     height: auto !important;
     object-fit: contain;
-    pointer-events: none;
     break-inside: avoid !important;
     page-break-inside: avoid !important;
   }
@@ -212,15 +212,11 @@ function syncThemeSurface() {
 /* ---------- Content Protection ---------- */
 function attachContentProtection(doc) {
   if (!doc) return;
-  doc.addEventListener('contextmenu', e => e.preventDefault());
-  doc.addEventListener('copy', e => { e.preventDefault(); note('প্রিভিউ মোডে লেখা কপি করা সীমাবদ্ধ'); });
-  doc.addEventListener('cut', e => e.preventDefault());
-  doc.addEventListener('keydown', e => {
-    if ((e.ctrlKey || e.metaKey) && ['c', 's', 'p', 'u', 'a'].includes(e.key.toLowerCase())) {
-      e.preventDefault();
-      note('কনটেন্ট সুরক্ষার জন্য এই শর্টকাটটি বন্ধ রাখা হয়েছে');
-    }
-  });
+  // Allow full text selection, long-press handles, context menu, and copy/cut/paste
+  doc.documentElement.style.webkitUserSelect = 'text';
+  doc.documentElement.style.userSelect = 'text';
+  doc.body.style.webkitUserSelect = 'text';
+  doc.body.style.userSelect = 'text';
 }
 attachContentProtection(document);
 
@@ -668,17 +664,30 @@ function bindIframeInteractions(idoc) {
   attachContentProtection(idoc);
   setupMarkableBlocks(idoc);
 
-  // Tap/Click handling: tap on line/paragraph to mark, or tap left/right screen edge in paged mode to turn page
-  let sx = 0, sy = 0, st = 0;
+  let sx = 0, sy = 0, st = 0, wasLongPress = false;
   idoc.addEventListener('touchstart', e => {
     sx = e.changedTouches[0].clientX;
     sy = e.changedTouches[0].clientY;
     st = Date.now();
+    wasLongPress = false;
+  }, { passive: true });
+
+  idoc.addEventListener('touchmove', e => {
+    const dx = Math.abs(e.changedTouches[0].clientX - sx);
+    const dy = Math.abs(e.changedTouches[0].clientY - sy);
+    if ((Date.now() - st > 380) && (dx < 14 && dy < 14)) {
+      wasLongPress = true;
+    }
   }, { passive: true });
 
   idoc.addEventListener('touchend', e => {
     const dx = e.changedTouches[0].clientX - sx;
     const dy = e.changedTouches[0].clientY - sy;
+    const dur = Date.now() - st;
+    const selText = (idoc.getSelection && idoc.getSelection().toString().trim()) || '';
+    if (selText.length > 0 || dur > 420 || wasLongPress) {
+      return; // User is selecting text via long-press
+    }
     if (Math.abs(dx) > 65 && Math.abs(dy) < 60) {
       if (dx < 0) next(); else prev();
     }
@@ -686,16 +695,18 @@ function bindIframeInteractions(idoc) {
 
   idoc.addEventListener('click', e => {
     if (e.target.closest && e.target.closest('a[href]')) return;
+    const selText = (idoc.getSelection && idoc.getSelection().toString().trim()) || '';
+    if (selText.length > 0) return; // Keep text selection intact
+
     const block = e.target.closest && e.target.closest('[data-bm-block]');
     if (block) {
       handleBlockTap(block);
       return;
     }
-    // Tap empty margin in paged mode to turn page
     if (R.readMode === 'paged') {
       const vw = idoc.documentElement.clientWidth || window.innerWidth;
-      if (e.clientX < vw * 0.22) prev();
-      else if (e.clientX > vw * 0.78) next();
+      if (e.clientX < vw * 0.16) prev();
+      else if (e.clientX > vw * 0.84) next();
       else hideLineActionBar();
     } else {
       hideLineActionBar();
@@ -726,21 +737,68 @@ window.openProjectPreview = function ({ title, lang, sections, previewConfig }) 
   renderProjectSection(0);
 };
 
+function buildSectionDetailHtml(htmlStr, locked, unitLabel) {
+  const tmp = new DOMParser().parseFromString('<body>' + (htmlStr || '') + '</body>', 'text/html');
+  const plainText = (tmp.body.textContent || '').trim().replace(/\s+/g, ' ');
+  const words = plainText ? plainText.split(/\s+/).length : 0;
+  const mins = Math.max(1, Math.ceil(words / 180));
+  const subHeadings = [...tmp.body.querySelectorAll('h2, h3')].map(h => h.textContent.trim()).filter(Boolean).slice(0, 6);
+  const excerpt = plainText.slice(0, 110);
+
+  return `
+    <div class="rTocMetaBadges">
+      <span class="rTocBadge">📄 ${esc(unitLabel)}</span>
+      <span class="rTocBadge">📝 ${words} শব্দ</span>
+      <span class="rTocBadge">⏱️ ~${mins} মিনিট</span>
+      <span class="rTocBadge">${locked ? '🔒 লক করা' : '🔓 উন্মুক্ত'}</span>
+    </div>
+    ${excerpt ? `<div class="rTocExcerpt">"${esc(excerpt)}${plainText.length > 110 ? '…' : ''}"</div>` : ''}
+    ${subHeadings.length ? `<div style="font-weight:600;margin-top:4px">উপ-শিরোনামসমূহ:</div><ul class="rTocSubList">${subHeadings.map(s => `<li>• ${esc(s)}</li>`).join('')}</ul>` : ''}
+  `;
+}
+
 function renderProjectToc() {
   const ol = $('#rTocList');
   ol.innerHTML = '';
   R.sections.forEach((sec, idx) => {
     const locked = isLockedIndex(idx);
     const li = document.createElement('li');
-    if (locked) li.className = 'locked';
+    li.className = 'rTocItem' + (locked ? ' locked' : '');
+
+    const mainRow = document.createElement('div');
+    mainRow.className = 'rTocMainRow';
+
     const b = document.createElement('button');
-    b.innerHTML = `<span>${esc(sec.title)}</span>${locked ? '<span>🔒</span>' : ''}`;
+    b.className = 'rTocGoBtn';
+    b.innerHTML = `<span>${idx + 1}. ${esc(sec.title)}</span>${locked ? '<span>🔒</span>' : ''}`;
     b.onclick = () => {
       $('#rDrawer').hidden = true;
       if (isLockedIndex(idx)) showPaywall(idx);
       else renderProjectSection(idx);
     };
-    li.appendChild(b);
+
+    const infoBtn = document.createElement('button');
+    infoBtn.type = 'button';
+    infoBtn.className = 'rTocInfoBtn';
+    infoBtn.textContent = 'বিস্তারিত ▾';
+
+    const detailBox = document.createElement('div');
+    detailBox.className = 'rTocDetailBox';
+    detailBox.hidden = true;
+    detailBox.innerHTML = buildSectionDetailHtml(sec.html, locked, `অংশ ${idx + 1}/${R.sections.length}`);
+
+    infoBtn.onclick = e => {
+      e.stopPropagation();
+      const willOpen = detailBox.hidden;
+      detailBox.hidden = !willOpen;
+      infoBtn.classList.toggle('open', willOpen);
+      infoBtn.textContent = willOpen ? 'বন্ধ ▴' : 'বিস্তারিত ▾';
+    };
+
+    mainRow.appendChild(b);
+    mainRow.appendChild(infoBtn);
+    li.appendChild(mainRow);
+    li.appendChild(detailBox);
     ol.appendChild(li);
   });
 }
@@ -899,14 +957,19 @@ async function buildToc(man) {
 
 function renderEpubToc() {
   const ol = $('#rTocList'); ol.innerHTML = '';
-  R.toc.forEach(e => {
+  R.toc.forEach((e, tIdx) => {
     const spineIdx = R.spine.findIndex(s => s.path === e.path);
     const locked = spineIdx >= 0 && isLockedIndex(spineIdx);
     const li = document.createElement('li');
-    if (locked) li.className = 'locked';
+    li.className = 'rTocItem' + (locked ? ' locked' : '');
+
+    const mainRow = document.createElement('div');
+    mainRow.className = 'rTocMainRow';
+
     const b = document.createElement('button');
+    b.className = 'rTocGoBtn';
+    b.style.paddingLeft = (6 + e.lv * 12) + 'px';
     b.innerHTML = `<span>${esc(e.label || '(নামহীন)')}</span>${locked ? '<span>🔒</span>' : ''}`;
-    b.style.paddingLeft = (12 + e.lv * 14) + 'px';
     b.onclick = () => {
       if (spineIdx >= 0) {
         $('#rDrawer').hidden = true;
@@ -914,7 +977,40 @@ function renderEpubToc() {
         else renderEpubChapter(spineIdx, e.hash);
       }
     };
-    li.appendChild(b); ol.appendChild(li);
+
+    const infoBtn = document.createElement('button');
+    infoBtn.type = 'button';
+    infoBtn.className = 'rTocInfoBtn';
+    infoBtn.textContent = 'বিস্তারিত ▾';
+
+    const detailBox = document.createElement('div');
+    detailBox.className = 'rTocDetailBox';
+    detailBox.hidden = true;
+
+    infoBtn.onclick = async ev => {
+      ev.stopPropagation();
+      const willOpen = detailBox.hidden;
+      detailBox.hidden = !willOpen;
+      infoBtn.classList.toggle('open', willOpen);
+      infoBtn.textContent = willOpen ? 'বন্ধ ▴' : 'বিস্তারিত ▾';
+      if (willOpen && !detailBox.dataset.loaded) {
+        detailBox.dataset.loaded = '1';
+        detailBox.innerHTML = '<span style="color:#777">তথ্য লোড হচ্ছে…</span>';
+        try {
+          const raw = spineIdx >= 0 ? await zipText(R.spine[spineIdx].path) : '';
+          const unitStr = spineIdx >= 0 ? `অংশ ${spineIdx + 1}/${R.spine.length}` : `সূচি #${tIdx + 1}`;
+          detailBox.innerHTML = buildSectionDetailHtml(raw, locked, unitStr);
+        } catch (_) {
+          detailBox.innerHTML = `<div class="rTocMetaBadges"><span class="rTocBadge">${locked ? '🔒 লক করা' : '🔓 উন্মুক্ত'}</span><span class="rTocBadge">📍 #${tIdx + 1}</span></div>`;
+        }
+      }
+    };
+
+    mainRow.appendChild(b);
+    mainRow.appendChild(infoBtn);
+    li.appendChild(mainRow);
+    li.appendChild(detailBox);
+    ol.appendChild(li);
   });
 }
 
@@ -1013,11 +1109,58 @@ function buildPdfToc() {
   for (let n = 1; n <= P.pdf.numPages; n++) {
     const locked = isLockedIndex(n - 1);
     const li = document.createElement('li');
-    if (locked) li.className = 'locked';
+    li.className = 'rTocItem' + (locked ? ' locked' : '');
+
+    const mainRow = document.createElement('div');
+    mainRow.className = 'rTocMainRow';
+
     const b = document.createElement('button');
+    b.className = 'rTocGoBtn';
     b.innerHTML = `<span>পৃষ্ঠা ${n}</span>${locked ? '<span>🔒</span>' : ''}`;
     b.onclick = () => { $('#rDrawer').hidden = true; if (isLockedIndex(n - 1)) showPaywall(n - 1); else goPdf(n); };
-    li.appendChild(b); ol.appendChild(li);
+
+    const infoBtn = document.createElement('button');
+    infoBtn.type = 'button';
+    infoBtn.className = 'rTocInfoBtn';
+    infoBtn.textContent = 'বিস্তারিত ▾';
+
+    const detailBox = document.createElement('div');
+    detailBox.className = 'rTocDetailBox';
+    detailBox.hidden = true;
+
+    infoBtn.onclick = async ev => {
+      ev.stopPropagation();
+      const willOpen = detailBox.hidden;
+      detailBox.hidden = !willOpen;
+      infoBtn.classList.toggle('open', willOpen);
+      infoBtn.textContent = willOpen ? 'বন্ধ ▴' : 'বিস্তারিত ▾';
+      if (willOpen && !detailBox.dataset.loaded) {
+        detailBox.dataset.loaded = '1';
+        detailBox.innerHTML = '<span style="color:#777">পৃষ্ঠার তথ্য লোড হচ্ছে…</span>';
+        try {
+          const pdfPage = await P.pdf.getPage(n);
+          const tc = await pdfPage.getTextContent();
+          const txt = tc.items.map(it => it.str).join(' ').trim().replace(/\s+/g, ' ');
+          const words = txt ? txt.split(/\s+/).length : 0;
+          detailBox.innerHTML = `
+            <div class="rTocMetaBadges">
+              <span class="rTocBadge">📄 পৃষ্ঠা ${n}/${P.pdf.numPages}</span>
+              <span class="rTocBadge">📝 ~${words} শব্দ</span>
+              <span class="rTocBadge">${locked ? '🔒 লক করা' : '🔓 উন্মুক্ত'}</span>
+            </div>
+            ${txt ? `<div class="rTocExcerpt">"${esc(txt.slice(0, 110))}${txt.length > 110 ? '…' : ''}"</div>` : '<div style="color:#777">স্ক্যান করা বা ছবি-ভিত্তিক পৃষ্ঠা</div>'}
+          `;
+        } catch (_) {
+          detailBox.innerHTML = `<div class="rTocMetaBadges"><span class="rTocBadge">📄 পৃষ্ঠা ${n}/${P.pdf.numPages}</span><span class="rTocBadge">${locked ? '🔒 লক করা' : '🔓 উন্মুক্ত'}</span></div>`;
+        }
+      }
+    };
+
+    mainRow.appendChild(b);
+    mainRow.appendChild(infoBtn);
+    li.appendChild(mainRow);
+    li.appendChild(detailBox);
+    ol.appendChild(li);
   }
 }
 function buildPages() {
