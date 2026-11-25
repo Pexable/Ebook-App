@@ -1,19 +1,36 @@
 (() => {
-const $ = s => document.querySelector(s);
-const KEY = 'ebook-maker-v1';
+const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
+const OLD_KEY = 'ebook-maker-v1';
 const uid = () => Math.random().toString(36).slice(2, 9);
 const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 const fresh = () => ({ meta:{title:'',author:'',lang:'bn',desc:''}, cover:null, cur:0,
-  chapters:[{id:uid(), title:'অধ্যায় ১', html:'<p><br></p>'}] });
+  toc:{on:true,title:'সূচিপত্র',auto:true,html:''},
+  chapters:[{id:uid(),title:'অধ্যায় ১',html:'<p><br></p>'}] });
+const norm = d => { const f=fresh(); if(!d||!d.meta||!Array.isArray(d.chapters)||!d.chapters.length) return f;
+  const s={...f,...d,toc:{...f.toc,...(d.toc||{})}}; if(s.cur>=s.chapters.length||s.cur<-1) s.cur=0; return s; };
 
-let S = (() => { try { const d = JSON.parse(localStorage.getItem(KEY)); return d && d.chapters && d.chapters.length ? d : fresh(); } catch(e){ return fresh(); } })();
-let timer;
-const body = $('#body');
+let S=null, timer, selFig=null, lastRange=null;
+const body=$('#body');
 
+/* ---------- storage (IndexedDB: large enough for images) ---------- */
+const idb={
+  open(){ return new Promise((res,rej)=>{ const r=indexedDB.open('ebook-maker',1); r.onupgradeneeded=()=>r.result.createObjectStore('kv'); r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error); }); },
+  async get(k){ const db=await this.open(); return new Promise((res,rej)=>{ const q=db.transaction('kv').objectStore('kv').get(k); q.onsuccess=()=>res(q.result); q.onerror=()=>rej(q.error); }); },
+  async set(k,v){ const db=await this.open(); return new Promise((res,rej)=>{ const t=db.transaction('kv','readwrite'); t.objectStore('kv').put(v,k); t.oncomplete=()=>res(); t.onerror=()=>rej(t.error); }); }
+};
 function toast(msg){ const t=$('#toast'); t.textContent=msg; t.hidden=false; clearTimeout(t._t); t._t=setTimeout(()=>t.hidden=true,3200); }
-function save(){ try{ localStorage.setItem(KEY, JSON.stringify(S)); $('#saved').textContent='সেভ হয়েছে'; }catch(e){ $('#saved').textContent='অটো-সেভ ব্যর্থ — "প্রজেক্ট সেভ" দিয়ে ফাইল রাখুন'; } }
+async function save(){ if(!S) return; commit(); try{ await idb.set('project',S); $('#saved').textContent='সেভ হয়েছে'; }catch(e){ $('#saved').textContent='অটো-সেভ ব্যর্থ — "প্রজেক্ট সেভ" দিয়ে ফাইল রাখুন'; } }
 function queueSave(){ $('#saved').textContent='সেভ হচ্ছে…'; clearTimeout(timer); timer=setTimeout(save,500); }
-function words(){ const t=body.innerText.trim(); return t ? t.split(/\s+/).length : 0; }
+const clean = h => h.replace(/ sel(?=")/g,'');
+function commit(){
+  if(!S) return;
+  if(S.cur===-1){ if(!S.toc.auto) S.toc.html=clean(body.innerHTML); return; }
+  const c=S.chapters[S.cur]; if(c) c.html=clean(body.innerHTML);
+}
+const tocAuto=()=>'<ol>'+S.chapters.map((c,i)=>`<li>${esc(c.title||'অধ্যায় '+(i+1))}</li>`).join('')+'</ol>';
+function words(){ const t=body.innerText.trim(); return t?t.split(/\s+/).length:0; }
+const fileName=()=>(S.meta.title.trim()||'ebook').replace(/[\\/:*?"<>|]+/g,'').replace(/\s+/g,'-');
+
 async function download(blob, name){
   const cap=window.Capacitor;
   if(cap && cap.isNativePlatform && cap.isNativePlatform()){
@@ -28,7 +45,6 @@ async function download(blob, name){
   }
   const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href),2000);
 }
-const fileName = () => (S.meta.title.trim() || 'ebook').replace(/[\\/:*?"<>|]+/g,'').replace(/\s+/g,'-');
 
 /* ---------- render ---------- */
 function renderMeta(){
@@ -38,80 +54,163 @@ function renderMeta(){
 }
 function renderList(){
   const ol=$('#chapters'); ol.innerHTML='';
+  const t=document.createElement('li'); t.className='tocRow'+(S.cur===-1?' on':'');
+  t.innerHTML='<button class="name"></button>';
+  t.firstChild.textContent=(S.toc.title||'সূচিপত্র')+(S.toc.on?(S.toc.auto?' (স্বয়ংক্রিয়)':''):' (বন্ধ)');
+  t.firstChild.onclick=()=>{ select(-1); goEditor(); };
+  ol.appendChild(t);
   S.chapters.forEach((c,i)=>{
     const li=document.createElement('li'); if(i===S.cur) li.className='on';
     li.innerHTML=`<button class="name"></button><button class="mini" data-a="up" title="উপরে">↑</button><button class="mini" data-a="down" title="নিচে">↓</button><button class="mini del" data-a="del" title="মুছুন">✕</button>`;
     li.querySelector('.name').textContent=c.title||'(নামহীন)';
-    li.querySelector('.name').onclick=()=>select(i);
+    li.querySelector('.name').onclick=()=>{ select(i); goEditor(); };
     li.querySelectorAll('[data-a]').forEach(b=>b.onclick=()=>act(i,b.dataset.a));
     ol.appendChild(li);
   });
 }
-function select(i){ commit(); S.cur=i; const c=S.chapters[i]; $('#cTitle').value=c.title; body.innerHTML=c.html; renderList(); stat(); }
-function commit(){ const c=S.chapters[S.cur]; if(c) c.html=body.innerHTML; }
-function stat(){ $('#stat').textContent=`${S.chapters.length}টি অধ্যায় · এই অধ্যায়ে ${words()} শব্দ`; }
+function renderPane(){
+  const toc=S.cur===-1; lastRange=null; deselect();
+  $('#tocBar').hidden=!toc;
+  if(toc){
+    $('#cTitle').value=S.toc.title; $('#tocOn').checked=S.toc.on; $('#tocMode').value=S.toc.auto?'auto':'manual';
+    body.innerHTML=S.toc.auto?tocAuto():(S.toc.html||'<p><br></p>'); body.contentEditable=S.toc.auto?'false':'true';
+  } else {
+    const c=S.chapters[S.cur]; $('#cTitle').value=c.title; body.innerHTML=c.html; body.contentEditable='true';
+  }
+  $('#toolbar').classList.toggle('off',body.contentEditable==='false');
+}
+function select(i){ commit(); S.cur=i; renderPane(); renderList(); stat(); }
+function goEditor(){ if(window.innerWidth<=820) $('.editor').scrollIntoView({behavior:'smooth',block:'start'}); }
+function stat(){ $('#stat').textContent=`${S.chapters.length}টি অধ্যায় · ${S.cur===-1?'সূচিপত্রে':'এই অধ্যায়ে'} ${words()} শব্দ`; }
 function act(i,a){
   commit();
   if(a==='del'){
     if(S.chapters.length===1) return toast('অন্তত একটি অধ্যায় থাকতে হবে');
     if(!confirm(`"${S.chapters[i].title}" মুছে ফেলবেন?`)) return;
-    S.chapters.splice(i,1); S.cur=Math.min(S.cur,S.chapters.length-1);
+    S.chapters.splice(i,1); S.cur=Math.min(Math.max(S.cur,0),S.chapters.length-1);
   } else {
     const j=a==='up'?i-1:i+1; if(j<0||j>=S.chapters.length) return;
     [S.chapters[i],S.chapters[j]]=[S.chapters[j],S.chapters[i]]; S.cur=j;
   }
-  select(S.cur); save();
+  renderPane(); renderList(); stat(); save();
 }
 
 /* ---------- events ---------- */
 $('#btnAdd').onclick=()=>{ commit(); S.chapters.push({id:uid(),title:`অধ্যায় ${S.chapters.length+1}`,html:'<p><br></p>'}); select(S.chapters.length-1); save(); $('#cTitle').focus(); };
-$('#cTitle').oninput=e=>{ S.chapters[S.cur].title=e.target.value; renderList(); queueSave(); };
+$('#cTitle').oninput=e=>{ if(S.cur===-1) S.toc.title=e.target.value; else S.chapters[S.cur].title=e.target.value; renderList(); queueSave(); };
+$('#tocOn').onchange=e=>{ S.toc.on=e.target.checked; renderList(); queueSave(); };
+$('#tocMode').onchange=e=>{ const auto=e.target.value==='auto'; if(auto===S.toc.auto) return; commit(); if(!auto&&!S.toc.html) S.toc.html=tocAuto(); S.toc.auto=auto; renderPane(); renderList(); queueSave(); };
 body.oninput=()=>{ commit(); stat(); queueSave(); };
-body.addEventListener('paste',e=>{ e.preventDefault(); const t=(e.clipboardData||window.clipboardData).getData('text/plain'); document.execCommand('insertText',false,t); });
+body.addEventListener('paste',e=>{
+  e.preventDefault(); const cd=e.clipboardData||window.clipboardData;
+  const img=[...(cd.files||[])].find(f=>f.type.startsWith('image/'));
+  if(img) return addImage(img);
+  document.execCommand('insertText',false,cd.getData('text/plain'));
+});
 [['#mTitle','title'],['#mAuthor','author'],['#mLang','lang'],['#mDesc','desc']].forEach(([s,k])=>$(s).addEventListener('input',e=>{ S.meta[k]=e.target.value; queueSave(); }));
-document.querySelectorAll('.toolbar button').forEach(b=>{
+$$('.toolbar button[data-cmd]').forEach(b=>{
   b.onmousedown=e=>e.preventDefault();
   b.onclick=()=>{ body.focus(); document.execCommand(b.dataset.cmd,false,b.dataset.val||null); commit(); queueSave(); };
 });
+
+/* ---------- images ---------- */
+function readImg(file,max,byH,alpha){
+  return new Promise((res,rej)=>{
+    const im=new Image();
+    im.onload=()=>{
+      const k=Math.min(1,max/(byH?im.height:im.width)), c=document.createElement('canvas');
+      c.width=Math.round(im.width*k); c.height=Math.round(im.height*k);
+      const g=c.getContext('2d'), png=alpha&&/png|gif|webp|svg/.test(file.type);
+      if(!png){ g.fillStyle='#fff'; g.fillRect(0,0,c.width,c.height); }
+      g.drawImage(im,0,0,c.width,c.height); URL.revokeObjectURL(im.src);
+      res(c.toDataURL(png?'image/png':'image/jpeg',0.85));
+    };
+    im.onerror=()=>rej(new Error('img')); im.src=URL.createObjectURL(file);
+  });
+}
+document.addEventListener('selectionchange',()=>{ const s=getSelection(); if(s.rangeCount&&body.contains(s.anchorNode)) lastRange=s.getRangeAt(0).cloneRange(); });
+async function addImage(file){
+  if(S.cur===-1&&S.toc.auto) return toast('স্বয়ংক্রিয় সূচিপত্রে ছবি দেওয়া যায় না');
+  try{
+    const src=await readImg(file,1200,false,true);
+    body.focus();
+    if(lastRange&&body.contains(lastRange.startContainer)){ const s=getSelection(); s.removeAllRanges(); s.addRange(lastRange); }
+    document.execCommand('insertHTML',false,`<figure class="fig fig-center" style="width:66%" contenteditable="false"><img src="${src}" alt=""></figure><p><br></p>`);
+    commit(); queueSave(); stat();
+  }catch(e){ toast('ছবিটি যোগ করা যায়নি'); }
+}
+$('#btnImg').onclick=()=>{ if(S.cur===-1&&S.toc.auto) return toast('ছবি দিতে সূচিপত্রের ধরন "নিজে লিখব" করুন'); $('#fileImg').click(); };
+$('#fileImg').onchange=async e=>{ for(const f of e.target.files) await addImage(f); e.target.value=''; };
+function pick(f){ deselect(); selFig=f; f.classList.add('sel'); $('#imgBar').hidden=false; }
+function deselect(){ if(selFig) selFig.classList.remove('sel'); selFig=null; $('#imgBar').hidden=true; }
+body.addEventListener('click',e=>{ const f=e.target.closest&&e.target.closest('figure'); if(f&&body.contains(f)&&body.contentEditable==='true') pick(f); else deselect(); });
+$$('#imgBar [data-img]').forEach(b=>{
+  b.onmousedown=e=>e.preventDefault();
+  b.onclick=()=>{
+    if(!selFig) return; const a=b.dataset.img, v=b.dataset.v;
+    if(a==='w') selFig.style.width=v;
+    else if(a==='al'){ selFig.classList.remove('fig-left','fig-center','fig-right'); selFig.classList.add('fig-'+v); }
+    else if(a==='cap'){
+      let fc=selFig.querySelector('figcaption'); const t=prompt('ছবির ক্যাপশন (খালি রাখলে মুছে যাবে)',fc?fc.textContent:''); if(t===null) return;
+      if(t.trim()){ if(!fc){ fc=document.createElement('figcaption'); selFig.appendChild(fc); } fc.textContent=t.trim(); } else if(fc) fc.remove();
+    } else if(a==='alt'){
+      const im=selFig.querySelector('img'), t=prompt('ছবির বিকল্প বর্ণনা (স্ক্রিন রিডারের জন্য)',im.alt); if(t===null) return; im.alt=t.trim();
+    } else if(a==='del'){ selFig.remove(); deselect(); }
+    commit(); queueSave(); stat();
+  };
+});
+
+/* ---------- cover / project ---------- */
 $('#btnCover').onclick=()=>$('#fileCover').click();
 $('#btnCoverDel').onclick=()=>{ S.cover=null; renderMeta(); save(); };
-$('#fileCover').onchange=e=>{
+$('#fileCover').onchange=async e=>{
   const f=e.target.files[0]; if(!f) return;
-  const img=new Image(); img.onload=()=>{
-    const k=Math.min(1,1600/img.height), c=document.createElement('canvas');
-    c.width=Math.round(img.width*k); c.height=Math.round(img.height*k);
-    c.getContext('2d').drawImage(img,0,0,c.width,c.height);
-    S.cover=c.toDataURL('image/jpeg',0.85); renderMeta(); save(); URL.revokeObjectURL(img.src);
-  };
-  img.onerror=()=>toast('ছবিটি পড়া যায়নি'); img.src=URL.createObjectURL(f); e.target.value='';
+  try{ S.cover=await readImg(f,1600,true,false); renderMeta(); save(); }catch(_){ toast('ছবিটি পড়া যায়নি'); }
+  e.target.value='';
 };
-$('#btnNew').onclick=()=>{ if(!confirm('বর্তমান বইটি মুছে নতুন বই শুরু করবেন? আগে প্রজেক্ট সেভ করে রাখুন।')) return; S=fresh(); renderMeta(); select(0); save(); };
+function load(d){ S=norm(d); renderMeta(); renderPane(); renderList(); stat(); }
+$('#btnNew').onclick=()=>{ if(!confirm('বর্তমান বইটি মুছে নতুন বই শুরু করবেন? আগে প্রজেক্ট সেভ করে রাখুন।')) return; load(null); save(); };
 $('#btnSave').onclick=()=>{ commit(); download(new Blob([JSON.stringify(S)],{type:'application/json'}),fileName()+'.ebook.json'); toast('প্রজেক্ট ফাইল নামানো হয়েছে'); };
 $('#btnOpen').onclick=()=>$('#fileOpen').click();
 $('#fileOpen').onchange=e=>{
   const f=e.target.files[0]; if(!f) return; const r=new FileReader();
-  r.onload=()=>{ try{ const d=JSON.parse(r.result); if(!d.meta||!Array.isArray(d.chapters)||!d.chapters.length) throw 0; S={...fresh(),...d,cur:0}; renderMeta(); select(0); save(); toast('প্রজেক্ট খোলা হয়েছে'); }catch(_){ toast('ফাইলটি সঠিক প্রজেক্ট ফাইল নয়'); } };
+  r.onload=()=>{ try{ const d=JSON.parse(r.result); if(!d.meta||!Array.isArray(d.chapters)||!d.chapters.length) throw 0; d.cur=0; load(d); save(); toast('প্রজেক্ট খোলা হয়েছে'); }catch(_){ toast('ফাইলটি সঠিক প্রজেক্ট ফাইল নয়'); } };
   r.readAsText(f); e.target.value='';
 };
 
 /* ---------- XHTML helpers ---------- */
-function toXhtml(html){
+function toXhtml(html,ctx){
   const d=new DOMParser().parseFromString('<body>'+html+'</body>','text/html'), x=new XMLSerializer();
+  d.querySelectorAll('[contenteditable]').forEach(n=>n.removeAttribute('contenteditable'));
+  d.querySelectorAll('.sel').forEach(n=>n.classList.remove('sel'));
+  if(ctx) d.querySelectorAll('img').forEach(im=>{
+    const src=im.getAttribute('src')||'', m=/^data:(image\/[\w+.-]+);base64,(.+)$/.exec(src);
+    if(!m) return im.remove();
+    let f=ctx.map.get(src);
+    if(!f){ f={name:`images/img${ctx.list.length+1}.${m[1].includes('png')?'png':'jpg'}`,mime:m[1],b64:m[2]}; ctx.map.set(src,f); ctx.list.push(f); }
+    im.setAttribute('src',f.name); if(!im.hasAttribute('alt')) im.setAttribute('alt','');
+  });
   return [...d.body.childNodes].map(n=>x.serializeToString(n)).join('\n');
 }
 const BOOK_CSS=`body{font-family:serif;line-height:1.8;margin:5%;text-align:justify}
 h1,h2{line-height:1.35;text-align:left}h1{font-size:1.6em;margin:1.2em 0 .8em}h2{font-size:1.3em}
 blockquote{margin:1em 0;padding-left:1em;border-left:3px solid #888;font-style:italic}
-img{max-width:100%}.cover{text-align:center;margin:0}.cover img{height:100%;max-width:100%}.title{text-align:center;margin-top:30%}`;
+img{max-width:100%}.cover{text-align:center;margin:0}.cover img{height:100%;max-width:100%}
+figure{display:block;margin:1.2em auto;text-align:center;page-break-inside:avoid}
+figure.fig-left{margin-left:0;margin-right:auto}figure.fig-right{margin-left:auto;margin-right:0}
+figure img{width:100%;height:auto;display:block}
+figcaption{font-size:.85em;color:#555;margin-top:.4em;text-align:center}
+ol.toc{list-style:none;padding:0}ol.toc li{margin:.6em 0}ol.toc a{text-decoration:none;color:inherit}`;
 const page=(t,b,l,extra='')=>`<?xml version="1.0" encoding="utf-8"?>\n<!DOCTYPE html>\n<html xmlns="http://www.w3.org/1999/xhtml" ${extra} lang="${l}" xml:lang="${l}"><head><meta charset="utf-8"/><title>${esc(t)}</title><link rel="stylesheet" type="text/css" href="style.css"/></head><body>${b}</body></html>`;
+const tocLinks=()=>`<ol class="toc">${S.chapters.map((c,i)=>`<li><a href="ch${i+1}.xhtml">${esc(c.title||'অধ্যায় '+(i+1))}</a></li>`).join('')}</ol>`;
 
 /* ---------- preview ---------- */
 $('#btnPreview').onclick=()=>{
-  commit();
-  const m=S.meta;
+  commit(); const m=S.meta;
   const front=`<div style="text-align:center;margin:12vh 0">${S.cover?`<img src="${S.cover}" style="max-height:60vh;max-width:90%"><br>`:''}<h1 style="text-align:center">${esc(m.title||'নামহীন বই')}</h1><p style="text-align:center">${esc(m.author)}</p></div><hr>`;
+  const toc=S.toc.on?`<h1>${esc(S.toc.title)}</h1>${S.toc.auto?tocLinks().replace(/href="[^"]*"/g,''):toXhtml(S.toc.html)}<hr>`:'';
   const chs=S.chapters.map(c=>`<h1>${esc(c.title)}</h1>${toXhtml(c.html)}<hr>`).join('');
-  $('#frame').srcdoc=`<!DOCTYPE html><html lang="${m.lang}"><head><meta charset="utf-8"><style>${BOOK_CSS}body{max-width:46em;margin:0 auto;padding:20px;font-family:"Noto Serif Bengali",Georgia,serif;font-size:19px}</style></head><body>${front}${chs}</body></html>`;
+  $('#frame').srcdoc=`<!DOCTYPE html><html lang="${m.lang}"><head><meta charset="utf-8"><style>${BOOK_CSS}body{max-width:46em;margin:0 auto;padding:20px;font-family:"Noto Serif Bengali",Georgia,serif;font-size:19px}</style></head><body>${front}${toc}${chs}</body></html>`;
   $('#modal').hidden=false;
 };
 $('#btnClose').onclick=()=>$('#modal').hidden=true;
@@ -119,17 +218,17 @@ document.addEventListener('keydown',e=>{ if(e.key==='Escape') $('#modal').hidden
 
 /* ---------- EPUB export ---------- */
 $('#btnEpub').onclick=async()=>{
-  commit(); save();
+  commit(); await save();
   const m=S.meta;
   if(!m.title.trim()) return toast('বইয়ের নাম লিখুন');
   if(!m.author.trim()) return toast('লেখকের নাম লিখুন');
   if(typeof JSZip==='undefined') return toast('JSZip লোড হয়নি — ইন্টারনেট সংযোগ দেখুন');
   try{
-    const zip=new JSZip(), id='urn:uuid:'+crypto.randomUUID(), L=m.lang;
+    const zip=new JSZip(), id='urn:uuid:'+crypto.randomUUID(), L=m.lang, ctx={map:new Map(),list:[]};
     zip.file('mimetype','application/epub+zip',{compression:'STORE'});
     zip.file('META-INF/container.xml','<?xml version="1.0"?>\n<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles></container>');
     const o=zip.folder('OEBPS'); o.file('style.css',BOOK_CSS);
-    let manifest='<item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/><item id="css" href="style.css" media-type="text/css"/>', spine='';
+    let manifest='<item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/><item id="css" href="style.css" media-type="text/css"/>', spine='', navItems='';
     if(S.cover){
       const [head,b64]=S.cover.split(','), mime=head.match(/data:(.*?);/)[1], ext=mime.includes('png')?'png':'jpg';
       o.file('cover.'+ext,b64,{base64:true});
@@ -137,14 +236,20 @@ $('#btnEpub').onclick=async()=>{
       manifest+=`<item id="coverimg" href="cover.${ext}" media-type="${mime}" properties="cover-image"/><item id="cover" href="cover.xhtml" media-type="application/xhtml+xml"/>`;
       spine+='<itemref idref="cover"/>';
     }
-    let navItems='';
+    if(S.toc.on){
+      const inner=S.toc.auto?tocLinks():toXhtml(S.toc.html,ctx), tt=S.toc.title||'সূচিপত্র';
+      o.file('toc.xhtml',page(tt,`<h1>${esc(tt)}</h1>\n${inner}`,L));
+      manifest+='<item id="tocpage" href="toc.xhtml" media-type="application/xhtml+xml"/>'; spine+='<itemref idref="tocpage"/>';
+      navItems+=`<li><a href="toc.xhtml">${esc(tt)}</a></li>`;
+    }
     S.chapters.forEach((c,i)=>{
       const f=`ch${i+1}.xhtml`;
-      o.file(f,page(c.title,`<h1>${esc(c.title)}</h1>\n${toXhtml(c.html)}`,L));
+      o.file(f,page(c.title,`<h1>${esc(c.title)}</h1>\n${toXhtml(c.html,ctx)}`,L));
       manifest+=`<item id="ch${i+1}" href="${f}" media-type="application/xhtml+xml"/>`;
       spine+=`<itemref idref="ch${i+1}"/>`;
       navItems+=`<li><a href="${f}">${esc(c.title||'অধ্যায় '+(i+1))}</a></li>`;
     });
+    ctx.list.forEach((f,i)=>{ o.file(f.name,f.b64,{base64:true}); manifest+=`<item id="im${i+1}" href="${f.name}" media-type="${f.mime}"/>`; });
     o.file('nav.xhtml',page('সূচিপত্র',`<nav epub:type="toc" id="toc"><h1>সূচিপত্র</h1><ol>${navItems}</ol></nav>`,L,'xmlns:epub="http://www.idpf.org/2007/ops"'));
     const now=new Date().toISOString().replace(/\.\d+Z$/,'Z');
     o.file('content.opf',`<?xml version="1.0" encoding="utf-8"?>
@@ -154,6 +259,12 @@ $('#btnEpub').onclick=async()=>{
   }catch(err){ console.error(err); toast('EPUB তৈরি করতে সমস্যা হয়েছে'); }
 };
 
-window.addEventListener('beforeunload',()=>{ commit(); save(); });
-renderMeta(); select(Math.min(S.cur||0,S.chapters.length-1));
+window.addEventListener('beforeunload',save);
+document.addEventListener('visibilitychange',()=>{ if(document.hidden) save(); });
+(async()=>{
+  let d=null;
+  try{ d=await idb.get('project'); }catch(e){}
+  if(!d){ try{ d=JSON.parse(localStorage.getItem(OLD_KEY)); }catch(e){} }
+  load(d);
+})();
 })();

@@ -53,7 +53,16 @@
 
   <section class="editor">
     <input id="cTitle" class="chTitle" type="text" placeholder="অধ্যায়ের নাম">
-    <div class="toolbar" role="toolbar" aria-label="ফরম্যাটিং">
+    <div id="tocBar" class="tocBar" hidden>
+      <label class="chk"><input id="tocOn" type="checkbox"> বইয়ে সূচিপত্র পেজ রাখুন</label>
+      <label>সূচিপত্র তৈরির ধরন
+        <select id="tocMode">
+          <option value="auto">স্বয়ংক্রিয় (অধ্যায়ের নাম থেকে)</option>
+          <option value="manual">নিজে লিখব</option>
+        </select>
+      </label>
+    </div>
+    <div id="toolbar" class="toolbar" role="toolbar" aria-label="ফরম্যাটিং">
       <button data-cmd="bold" title="বোল্ড"><b>B</b></button>
       <button data-cmd="italic" title="ইটালিক"><i>I</i></button>
       <button data-cmd="underline" title="আন্ডারলাইন"><u>U</u></button>
@@ -70,9 +79,25 @@
       <button data-cmd="justifyCenter">মাঝ</button>
       <button data-cmd="justifyFull">সমান</button>
       <span class="sep"></span>
+      <button id="btnImg" title="ছবি যোগ করুন">ছবি</button>
+      <span class="sep"></span>
       <button data-cmd="undo">আনডু</button>
       <button data-cmd="redo">রিডু</button>
     </div>
+    <div id="imgBar" class="toolbar imgbar" hidden aria-label="ছবির অপশন">
+      <button data-img="w" data-v="33%">ছোট</button>
+      <button data-img="w" data-v="66%">মাঝারি</button>
+      <button data-img="w" data-v="100%">পূর্ণ</button>
+      <span class="sep"></span>
+      <button data-img="al" data-v="left">বাম</button>
+      <button data-img="al" data-v="center">মাঝ</button>
+      <button data-img="al" data-v="right">ডান</button>
+      <span class="sep"></span>
+      <button data-img="cap">ক্যাপশন</button>
+      <button data-img="alt">বিকল্প লেখা</button>
+      <button data-img="del" class="danger">ছবি মুছুন</button>
+    </div>
+    <input type="file" id="fileImg" accept="image/*" multiple hidden>
     <div id="body" class="page" contenteditable="true" spellcheck="false" aria-label="অধ্যায়ের লেখা"></div>
     <div class="status"><span id="stat"></span><span id="saved">অটো-সেভ চালু</span></div>
   </section>

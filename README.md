@@ -12,9 +12,11 @@ A lightweight, browser-based EPUB 3 ebook creator. Write chapters in a rich-text
 - **Cover image:** upload once; it is automatically resized and compressed
 - **Chapter management:** add, delete and reorder chapters
 - **Rich-text editor:** bold, italic, underline, headings, blockquotes, lists and text alignment
+- **Inline images:** insert or paste images into chapters, resize them (small, medium, full), align them, and add captions and alt text; images are compressed automatically and embedded in the EPUB
+- **Table of contents page:** generated automatically from chapter titles, or written manually; can be switched off
 - **Live preview:** read the book as a continuous document before exporting
 - **EPUB 3 export:** includes cover page, navigation document (table of contents) and package metadata
-- **Autosave:** work is stored in the browser's `localStorage`
+- **Autosave:** work is stored in the browser's IndexedDB, which has room for image-heavy books
 - **Project backup:** save and restore the full project as a `.ebook.json` file
 - **Responsive and accessible:** works on desktop and mobile, supports light and dark mode, keyboard focus is visible
 - **Bangla-first UI:** interface text and default fonts are tuned for Bangla
@@ -116,14 +118,12 @@ Current versions of Chrome, Edge, Firefox and Safari.
 
 ## Known Limitations
 
-- Images inside chapter text are not supported yet (the cover image is)
 - The editor relies on `document.execCommand`, which is deprecated but still supported by all major browsers
 - Autosave is per-browser and per-device; use project backups for anything important
-- Very large projects may exceed the browser's `localStorage` quota
+- Very large image collections can make the project file and the exported EPUB big
 
 ## Roadmap
 
-- [ ] Inline images in chapters
 - [ ] PDF and HTML export
 - [ ] Drag-and-drop chapter ordering
 - [ ] Custom fonts and themes for the exported book
