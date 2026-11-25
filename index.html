@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ইবুক মেকার</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@400;500;600&family=Noto+Serif+Bengali:wght@400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <h1>ইবুক মেকার</h1>
+  <nav>
+    <button id="btnNew" class="ghost">নতুন বই</button>
+    <button id="btnOpen" class="ghost">প্রজেক্ট খুলুন</button>
+    <button id="btnSave" class="ghost">প্রজেক্ট সেভ</button>
+    <button id="btnPreview" class="ghost">প্রিভিউ</button>
+    <button id="btnEpub" class="primary">EPUB তৈরি করুন</button>
+  </nav>
+  <input type="file" id="fileOpen" accept=".json,application/json" hidden>
+</header>
+
+<main class="layout">
+  <aside class="side">
+    <section>
+      <h2>বইয়ের তথ্য</h2>
+      <label>বইয়ের নাম<input id="mTitle" type="text"></label>
+      <label>লেখক<input id="mAuthor" type="text"></label>
+      <label>ভাষা
+        <select id="mLang">
+          <option value="bn">বাংলা</option>
+          <option value="en">English</option>
+          <option value="hi">हिन्दी</option>
+          <option value="ar">العربية</option>
+        </select>
+      </label>
+      <label>সংক্ষিপ্ত বিবরণ<textarea id="mDesc" rows="3"></textarea></label>
+      <div class="cover">
+        <div id="coverBox" class="coverBox">কভার নেই</div>
+        <div class="row">
+          <button id="btnCover" class="ghost">কভার বাছুন</button>
+          <button id="btnCoverDel" class="ghost">সরান</button>
+        </div>
+        <input type="file" id="fileCover" accept="image/*" hidden>
+      </div>
+    </section>
+    <section>
+      <div class="row between"><h2>অধ্যায়</h2><button id="btnAdd" class="ghost">+ নতুন</button></div>
+      <ol id="chapters" class="chapters"></ol>
+    </section>
+  </aside>
+
+  <section class="editor">
+    <input id="cTitle" class="chTitle" type="text" placeholder="অধ্যায়ের নাম">
+    <div class="toolbar" role="toolbar" aria-label="ফরম্যাটিং">
+      <button data-cmd="bold" title="বোল্ড"><b>B</b></button>
+      <button data-cmd="italic" title="ইটালিক"><i>I</i></button>
+      <button data-cmd="underline" title="আন্ডারলাইন"><u>U</u></button>
+      <span class="sep"></span>
+      <button data-cmd="formatBlock" data-val="h1">শিরোনাম ১</button>
+      <button data-cmd="formatBlock" data-val="h2">শিরোনাম ২</button>
+      <button data-cmd="formatBlock" data-val="p">অনুচ্ছেদ</button>
+      <button data-cmd="formatBlock" data-val="blockquote">উদ্ধৃতি</button>
+      <span class="sep"></span>
+      <button data-cmd="insertUnorderedList">তালিকা</button>
+      <button data-cmd="insertOrderedList">ক্রমিক</button>
+      <span class="sep"></span>
+      <button data-cmd="justifyLeft">বাম</button>
+      <button data-cmd="justifyCenter">মাঝ</button>
+      <button data-cmd="justifyFull">সমান</button>
+      <span class="sep"></span>
+      <button data-cmd="undo">আনডু</button>
+      <button data-cmd="redo">রিডু</button>
+    </div>
+    <div id="body" class="page" contenteditable="true" spellcheck="false" aria-label="অধ্যায়ের লেখা"></div>
+    <div class="status"><span id="stat"></span><span id="saved">অটো-সেভ চালু</span></div>
+  </section>
+</main>
+
+<div id="modal" class="modal" hidden>
+  <div class="modalBar"><strong>প্রিভিউ</strong><button id="btnClose" class="ghost">বন্ধ করুন</button></div>
+  <iframe id="frame" title="প্রিভিউ"></iframe>
+</div>
+<div id="toast" class="toast" role="status" hidden></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,52 @@
+:root{
+  --bg:#eef1f4; --panel:#ffffff; --ink:#1b2230; --muted:#5d6878; --line:#d5dbe3;
+  --cloth:#1f6f5c; --cloth-d:#175646; --thread:#b23a48; --page:#fffefc;
+  --ui:"Hind Siliguri",system-ui,"Noto Sans Bengali","Segoe UI",sans-serif;
+  --read:"Noto Serif Bengali","Kalpurush",Georgia,serif;
+}
+@media (prefers-color-scheme:dark){
+  :root{--bg:#12161d;--panel:#1a2029;--ink:#e6eaf0;--muted:#9aa6b6;--line:#2c3441;--page:#1f2630;--cloth:#3aa389;--cloth-d:#2f8a74;--thread:#e0707d}
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{font-family:var(--ui);background:var(--bg);color:var(--ink);font-size:16px;display:flex;flex-direction:column}
+.top{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;padding:10px 16px;background:var(--cloth);color:#fff}
+.top h1{margin:0;font-size:20px;font-weight:600}
+.top nav{display:flex;flex-wrap:wrap;gap:8px}
+button{font:inherit;cursor:pointer;border-radius:6px;border:1px solid var(--line);padding:7px 12px;background:var(--panel);color:var(--ink)}
+button:hover{border-color:var(--cloth)}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,.page:focus-visible{outline:2px solid var(--cloth);outline-offset:1px}
+.top .ghost{background:transparent;color:#fff;border-color:rgba(255,255,255,.45)}
+.top .ghost:hover{background:rgba(255,255,255,.14)}
+.top .primary{background:#fff;color:var(--cloth-d);border-color:#fff;font-weight:600}
+.layout{flex:1;display:grid;grid-template-columns:320px 1fr;gap:14px;padding:14px;min-height:0}
+.side{overflow:auto;display:flex;flex-direction:column;gap:14px}
+.side section,.editor{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:14px}
+h2{font-size:16px;margin:0 0 10px}
+label{display:block;font-size:14px;color:var(--muted);margin-bottom:10px}
+input[type=text],select,textarea{display:block;width:100%;margin-top:4px;padding:8px 10px;font:inherit;color:var(--ink);background:var(--page);border:1px solid var(--line);border-radius:6px}
+.row{display:flex;gap:8px}.between{justify-content:space-between;align-items:center}
+.cover .coverBox{height:150px;border:1px dashed var(--line);border-radius:6px;display:grid;place-items:center;color:var(--muted);margin-bottom:8px;overflow:hidden;background:var(--page)}
+.coverBox img{height:100%;width:100%;object-fit:contain}
+.chapters{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.chapters li{display:flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:6px;padding:4px 6px;background:var(--page)}
+.chapters li.on{border-color:var(--cloth);box-shadow:inset 3px 0 0 var(--cloth)}
+.chapters .name{flex:1;text-align:left;border:0;background:transparent;padding:6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chapters .mini{padding:2px 7px;font-size:13px}
+.chapters .del{color:var(--thread)}
+.editor{display:flex;flex-direction:column;min-height:0;min-width:0}
+.chTitle{font-size:20px;font-weight:600;margin-bottom:10px}
+.toolbar{display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:8px 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line);margin-bottom:10px}
+.toolbar button{padding:4px 9px;font-size:14px}
+.sep{width:1px;height:20px;background:var(--line);margin:0 2px}
+.page{flex:1;min-height:320px;overflow:auto;padding:22px 26px;background:var(--page);border:1px solid var(--line);border-radius:6px;font-family:var(--read);font-size:18px;line-height:1.9;max-width:78ch;width:100%;margin:0 auto}
+.page h1{font-size:1.6em;line-height:1.4}.page h2{font-size:1.3em;line-height:1.4}
+.page blockquote{margin:1em 0;padding-left:1em;border-left:3px solid var(--cloth);color:var(--muted)}
+.status{display:flex;justify-content:space-between;color:var(--muted);font-size:13px;margin-top:8px}
+.modal{position:fixed;inset:0;background:var(--bg);z-index:10;display:flex;flex-direction:column}
+.modal[hidden]{display:none}
+.modalBar{display:flex;justify-content:space-between;align-items:center;padding:10px 16px;background:var(--panel);border-bottom:1px solid var(--line)}
+#frame{flex:1;border:0;background:#fff}
+.toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:6px;z-index:20;max-width:90vw}
+.toast[hidden]{display:none}
+@media (max-width:820px){.layout{grid-template-columns:1fr}.side{overflow:visible}.page{padding:16px}}
