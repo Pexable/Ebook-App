@@ -14,7 +14,20 @@ function toast(msg){ const t=$('#toast'); t.textContent=msg; t.hidden=false; cle
 function save(){ try{ localStorage.setItem(KEY, JSON.stringify(S)); $('#saved').textContent='সেভ হয়েছে'; }catch(e){ $('#saved').textContent='অটো-সেভ ব্যর্থ — "প্রজেক্ট সেভ" দিয়ে ফাইল রাখুন'; } }
 function queueSave(){ $('#saved').textContent='সেভ হচ্ছে…'; clearTimeout(timer); timer=setTimeout(save,500); }
 function words(){ const t=body.innerText.trim(); return t ? t.split(/\s+/).length : 0; }
-function download(blob, name){ const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href),2000); }
+async function download(blob, name){
+  const cap=window.Capacitor;
+  if(cap && cap.isNativePlatform && cap.isNativePlatform()){
+    try{
+      const {Filesystem,Share}=cap.Plugins, i=name.lastIndexOf('.');
+      const base=name.slice(0,i).replace(/[^A-Za-z0-9_-]+/g,'_').replace(/^_+|_+$/g,'')||'ebook';
+      const data=await new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(String(r.result).split(',')[1]); r.onerror=rej; r.readAsDataURL(blob); });
+      const f=await Filesystem.writeFile({path:base+name.slice(i),data,directory:'CACHE'});
+      await Share.share({title:name,dialogTitle:'ফাইলটি সেভ বা শেয়ার করুন',url:f.uri});
+    }catch(e){ if(!/cancel/i.test(String(e&&e.message))) toast('ফাইল সেভ করা যায়নি'); }
+    return;
+  }
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href),2000);
+}
 const fileName = () => (S.meta.title.trim() || 'ebook').replace(/[\\/:*?"<>|]+/g,'').replace(/\s+/g,'-');
 
 /* ---------- render ---------- */
