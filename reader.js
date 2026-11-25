@@ -5,13 +5,18 @@ const note = msg => { const t = $('#toast'); t.textContent = msg; t.hidden = fal
 const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
 const R = {
-  mode: '', // 'epub' | 'pdf' | 'project' | 'text'
+  mode: '', // 'epub' | 'pdf' | 'project'
+  readMode: localStorage.getItem('rrmode') || 'paged', // 'paged' | 'scroll'
   key: '',
   zip: null,
   spine: [],
   toc: [],
   sections: [],
-  i: 0,
+  i: 0,          // current chapter / section index
+  subPage: 0,    // current sub-page inside current chapter (0-indexed)
+  subTotal: 1,   // total sub-pages inside current chapter
+  pageW: 0,
+  pageGap: 32,
   tk: 0,
   urls: new Map(),
   css: new Map(),
@@ -25,7 +30,10 @@ const R = {
   buyUrl: '',
   ctaText: 'সম্পূর্ণ বইটি পড়তে আনলক করুন বা কিনুন',
   unlocked: false,
-  bookmarks: []
+  // Bookmarks (pages & saved lines) + Last-read line marker
+  bookmarks: [],
+  lastRead: null, // { idx, subPage, blockIdx, snippet, label }
+  selectedBlock: null // { blockIdx, snippet, el }
 };
 
 const P = { pdf: null, zoom: 1, vp: null, divs: [], io: null, cur: 1, raf: 0, w: 0 };
@@ -36,29 +44,96 @@ const MIME = {
   ttf: 'font/ttf', otf: 'font/otf', woff: 'font/woff', woff2: 'font/woff2'
 };
 
+const THEME_BG = ['#ffffff', '#f4ecd8', '#14181f'];
+
 const THEMES = [
-  'html,body{background:#ffffff!important;color:#1c222b!important}',
-  'html,body{background:#f4ecd8!important;color:#3b2f1e!important}',
-  'html,body{background:#14181f!important;color:#d8dde6!important}a{color:#8ab4f8!important}table,th,td{border-color:#444!important}'
+  'html,body,#rPageWrap{background:#ffffff!important;color:#1c222b!important}',
+  'html,body,#rPageWrap{background:#f4ecd8!important;color:#3b2f1e!important}',
+  'html,body,#rPageWrap{background:#14181f!important;color:#d8dde6!important}a{color:#8ab4f8!important}table,th,td{border-color:#444!important}'
 ];
 
 const BASE_CSS = `
+  *, *::before, *::after {
+    box-sizing: border-box !important;
+  }
+  html {
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow-x: hidden !important;
+  }
   body {
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
     font-family: "Noto Serif Bengali", "Hind Siliguri", Georgia, serif;
-    padding: 20px 18px 60px;
-    max-width: 46em;
-    margin: 0 auto;
     overflow-wrap: anywhere;
+    word-break: break-word;
     -webkit-user-select: none;
     user-select: none;
   }
-  h1, h2, h3 { line-height: 1.35; }
-  table { width: 100%; border-collapse: collapse; margin: 1em 0; }
+  #rPageWrap {
+    width: 100%;
+    max-width: 48em;
+    margin: 0 auto;
+    padding: 18px 18px 48px;
+  }
+  html.is-paged, html.is-paged body {
+    height: 100% !important;
+    overflow: hidden !important;
+  }
+  html.is-paged #rPageWrap {
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 16px 18px 20px !important;
+    column-fill: auto;
+    transition: transform 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+    will-change: transform;
+  }
+  h1, h2, h3 { line-height: 1.35; break-after: avoid; page-break-after: avoid; }
+  p, li, blockquote { orphans: 2; widows: 2; }
+  table { width: 100% !important; max-width: 100% !important; border-collapse: collapse; margin: 1em 0; }
   th, td { border: 1px solid #bbb; padding: 6px 8px; text-align: left; }
-  img, svg, video { max-width: 100%; height: auto; pointer-events: none; }
+  img, svg, video, figure { max-width: 100% !important; height: auto !important; pointer-events: none; break-inside: avoid; }
   ol.toc { list-style: none; padding: 0; }
   ol.toc li { margin: 0.65em 0; border-bottom: 1px dashed rgba(128,128,128,0.25); padding-bottom: 4px; }
   ol.toc a { text-decoration: none; color: inherit; font-weight: 500; }
+
+  /* Markable blocks & visual markers */
+  [data-bm-block] {
+    border-radius: 4px;
+    transition: background-color 0.18s ease, box-shadow 0.18s ease;
+    cursor: pointer;
+  }
+  [data-bm-block].r-block-selected {
+    background: rgba(255, 179, 0, 0.24) !important;
+    box-shadow: -3px 0 0 #ffb300;
+    padding-left: 6px;
+  }
+  [data-bm-block].r-block-saved {
+    background: rgba(26, 107, 84, 0.14) !important;
+    box-shadow: -3px 0 0 #1a6b54;
+    padding-left: 6px;
+  }
+  [data-bm-block].r-block-lastread {
+    background: rgba(255, 152, 0, 0.20) !important;
+    border-bottom: 2px dashed #ef6c00 !important;
+    position: relative;
+  }
+  [data-bm-block].r-block-lastread::after {
+    content: "📍 এ পর্যন্ত পঠিত";
+    display: inline-block;
+    margin-left: 8px;
+    font-size: 0.72em;
+    font-family: "Hind Siliguri", sans-serif;
+    background: #ef6c00;
+    color: #fff;
+    padding: 1px 7px;
+    border-radius: 10px;
+    vertical-align: middle;
+  }
 `;
 
 /* ---------- Helpers ---------- */
@@ -99,7 +174,13 @@ async function cssText(path) {
   }
   R.css.set(path, css); return css;
 }
-const userCss = () => `html{font-size:${R.fs}%!important}body{line-height:${R.lh}!important}${THEMES[R.theme]}`;
+const userCss = () => `html{font-size:${R.fs}%!important}body,#rPageWrap{line-height:${R.lh}!important}${THEMES[R.theme]}`;
+
+function syncThemeSurface() {
+  const bg = R.mode === 'pdf' ? '#525659' : THEME_BG[R.theme];
+  $('#rBody').style.background = bg;
+  $('#rFrame').style.background = THEME_BG[R.theme];
+}
 
 /* ---------- Content Protection ---------- */
 function attachContentProtection(doc) {
@@ -131,7 +212,6 @@ function getAllowedMaxIndex() {
     const allowedCount = Math.max(1, Math.ceil((total * pct) / 100));
     return Math.min(total - 1, allowedCount - 1);
   }
-  // chapters / pages count (for project mode, front-matter doesn't penalize chapter count)
   if (R.mode === 'project') {
     let chSeen = 0;
     for (let idx = 0; idx < R.sections.length; idx++) {
@@ -161,77 +241,352 @@ function hidePaywall() {
   $('#rPaywall').hidden = true;
 }
 
-/* ---------- Bookmarks & Progress ---------- */
+/* ---------- Bookmarks & Last-Read Line Marker Persistence ---------- */
 function loadBookmarks() {
   try { R.bookmarks = JSON.parse(localStorage.getItem('rbm:' + R.key) || '[]'); } catch (e) { R.bookmarks = []; }
+  try { R.lastRead = JSON.parse(localStorage.getItem('rlr:' + R.key) || 'null'); } catch (e) { R.lastRead = null; }
+  updateLastReadHeaderBtn();
   updateBookmarkUI();
 }
 function saveBookmarks() {
   try { localStorage.setItem('rbm:' + R.key, JSON.stringify(R.bookmarks)); } catch (e) { }
   updateBookmarkUI();
 }
+function saveLastRead() {
+  try {
+    if (R.lastRead) localStorage.setItem('rlr:' + R.key, JSON.stringify(R.lastRead));
+    else localStorage.removeItem('rlr:' + R.key);
+  } catch (e) { }
+  updateLastReadHeaderBtn();
+  updateBookmarkUI();
+}
+function updateLastReadHeaderBtn() {
+  const btn = $('#rJumpLastBtn');
+  if (!btn) return;
+  btn.hidden = !R.lastRead;
+}
+
 function currentUnitIndex() {
   return R.mode === 'pdf' ? P.cur - 1 : R.i;
 }
+function currentSubPage() {
+  return R.mode === 'pdf' ? 0 : (R.readMode === 'paged' ? R.subPage : 0);
+}
 function currentUnitLabel() {
   if (R.mode === 'pdf') return `পৃষ্ঠা ${P.cur}`;
+  const pageTag = R.readMode === 'paged' && R.subTotal > 1 ? ` · পৃষ্ঠা ${R.subPage + 1}/${R.subTotal}` : '';
   if (R.mode === 'epub') {
     const t = R.toc.find(x => R.spine[R.i] && x.path === R.spine[R.i].path);
-    return t ? t.label : `অংশ ${R.i + 1}`;
+    return (t ? t.label : `অংশ ${R.i + 1}`) + pageTag;
   }
-  return R.sections[R.i] ? R.sections[R.i].title : `অংশ ${R.i + 1}`;
+  return (R.sections[R.i] ? R.sections[R.i].title : `অংশ ${R.i + 1}`) + pageTag;
 }
+
+function isCurrentPageBookmarked() {
+  const idx = currentUnitIndex();
+  const sp = currentSubPage();
+  return R.bookmarks.some(b => b.type !== 'line' && b.idx === idx && (b.subPage || 0) === sp);
+}
+
 function updateBookmarkUI() {
-  const cur = currentUnitIndex();
-  const exists = R.bookmarks.some(b => b.idx === cur);
+  const exists = isCurrentPageBookmarked();
   const btn = $('#rBookmarkBtn');
   btn.textContent = exists ? '★' : '☆';
   btn.classList.toggle('active-bm', exists);
-  $('#bmCount').textContent = R.bookmarks.length;
+  $('#bmCount').textContent = R.bookmarks.length + (R.lastRead ? 1 : 0);
 
+  // Render Last-Read Card in Drawer
+  const lrCard = $('#rLastReadCard');
+  if (R.lastRead) {
+    lrCard.hidden = false;
+    lrCard.innerHTML = `
+      <strong>📍 সর্বশেষ পঠিত চিহ্ন (${esc(R.lastRead.label)})</strong>
+      <p>"${esc(R.lastRead.snippet || 'নির্দিষ্ট স্থান')}"</p>
+      <div class="lrActions">
+        <button class="primary" id="btnGoLastRead">এখান থেকে পড়ুন</button>
+        <button class="ghost danger" id="btnDelLastRead">মুছুন</button>
+      </div>
+    `;
+    lrCard.querySelector('#btnGoLastRead').onclick = () => {
+      $('#rDrawer').hidden = true;
+      jumpToLocation(R.lastRead);
+    };
+    lrCard.querySelector('#btnDelLastRead').onclick = () => {
+      R.lastRead = null;
+      saveLastRead();
+      refreshIframeMarkers();
+      note('পঠিত চিহ্ন মুছে ফেলা হয়েছে');
+    };
+  } else {
+    lrCard.hidden = true;
+    lrCard.innerHTML = '';
+  }
+
+  // Render Saved Pages & Lines List
   const list = $('#rBmList');
   list.innerHTML = '';
-  if (!R.bookmarks.length) {
-    list.innerHTML = '<li style="padding:16px;text-align:center;color:#777">কোনো বুকমার্ক নেই</li>';
+  if (!R.bookmarks.length && !R.lastRead) {
+    list.innerHTML = '<li style="padding:18px 14px;text-align:center;color:#777;font-size:0.86rem">কোনো পৃষ্ঠা বা লাইন মার্ক করা নেই।<br><br>পড়ার সময় উপরে <b>☆</b> চেপে পৃষ্ঠা মার্ক করুন অথবা যেকোনো লাইনে ট্যাপ করে চিহ্ন রাখুন।</li>';
     return;
   }
   R.bookmarks.forEach((bm, i) => {
     const li = document.createElement('li');
     li.className = 'rBmItem';
-    li.innerHTML = `<button class="bmGo">🔖 ${esc(bm.label)}</button><button class="bmDel" title="মুছুন">✕</button>`;
+    const icon = bm.type === 'line' ? '🖍️' : '🔖';
+    li.innerHTML = `
+      <button class="bmGo">
+        <span class="bmTitle">${icon} ${esc(bm.label)}</span>
+        ${bm.snippet ? `<span class="bmQuote">"${esc(bm.snippet)}"</span>` : ''}
+      </button>
+      <button class="bmDel" title="মুছুন">✕</button>
+    `;
     li.querySelector('.bmGo').onclick = () => {
       $('#rDrawer').hidden = true;
-      jumpToUnit(bm.idx);
+      jumpToLocation(bm);
     };
     li.querySelector('.bmDel').onclick = () => {
       R.bookmarks.splice(i, 1);
       saveBookmarks();
+      refreshIframeMarkers();
     };
     list.appendChild(li);
   });
 }
 
-function updateProgress() {
-  const total = getTotalUnits();
-  const cur = currentUnitIndex() + 1;
-  const pct = Math.min(100, Math.max(1, Math.round((cur / total) * 100)));
-  $('#rProgressFill').style.width = pct + '%';
-  $('#rProgressText').textContent = `${pct}% পড়া হয়েছে (${cur}/${total})`;
-  $('#rPrev').disabled = cur <= 1;
-  $('#rNext').disabled = cur >= total && !isLockedIndex(cur);
-  updateBookmarkUI();
-}
-
-function jumpToUnit(idx) {
-  if (isLockedIndex(idx)) {
-    showPaywall(idx);
+function jumpToLocation(loc) {
+  if (!loc) return;
+  if (isLockedIndex(loc.idx)) {
+    showPaywall(loc.idx);
     return;
   }
   hidePaywall();
-  if (R.mode === 'pdf') goPdf(idx + 1);
-  else if (R.mode === 'epub') renderEpubChapter(idx);
-  else renderProjectSection(idx);
+  const opts = {
+    subPage: loc.subPage || 0,
+    blockIdx: typeof loc.blockIdx === 'number' ? loc.blockIdx : null
+  };
+  if (R.mode === 'pdf') goPdf(loc.idx + 1);
+  else if (R.mode === 'epub') renderEpubChapter(loc.idx, '', opts);
+  else renderProjectSection(loc.idx, opts);
 }
+
+/* ---------- Pagination Engine (True Page-by-Page Reading) ---------- */
+function applyPaginationLayout(opts = {}) {
+  const idoc = $('#rFrame').contentDocument;
+  if (!idoc || !idoc.body) return;
+  const htmlEl = idoc.documentElement;
+  const wrap = idoc.getElementById('rPageWrap');
+  if (!wrap) return;
+
+  if (R.readMode !== 'paged') {
+    htmlEl.classList.remove('is-paged');
+    wrap.style.width = '';
+    wrap.style.height = '';
+    wrap.style.columnWidth = '';
+    wrap.style.columnGap = '';
+    wrap.style.transform = '';
+    R.subPage = 0;
+    R.subTotal = 1;
+    if (typeof opts.blockIdx === 'number') {
+      const targetEl = wrap.querySelector(`[data-bm-block="${opts.blockIdx}"]`);
+      if (targetEl) targetEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+    updatePosAndProgress();
+    return;
+  }
+
+  htmlEl.classList.add('is-paged');
+  const frameEl = $('#rFrame');
+  const vw = Math.max(240, frameEl.clientWidth || window.innerWidth);
+  const vh = Math.max(240, frameEl.clientHeight || (window.innerHeight - 100));
+  const gap = R.pageGap;
+
+  R.pageW = vw;
+  wrap.style.width = vw + 'px';
+  wrap.style.height = vh + 'px';
+  wrap.style.columnWidth = vw + 'px';
+  wrap.style.columnGap = gap + 'px';
+  wrap.style.transform = 'translateX(0px)';
+
+  // Force layout measurement to count exact horizontal pages
+  const sw = wrap.scrollWidth;
+  const totalPages = Math.max(1, Math.round((sw + gap) / (vw + gap)));
+  R.subTotal = totalPages;
+
+  let targetPage = 0;
+  if (opts.lastPage) {
+    targetPage = totalPages - 1;
+  } else if (typeof opts.blockIdx === 'number') {
+    const targetEl = wrap.querySelector(`[data-bm-block="${opts.blockIdx}"]`);
+    if (targetEl) {
+      // offsetLeft inside multi-column container tells which column page the line sits on
+      targetPage = Math.floor((targetEl.offsetLeft + 4) / (vw + gap));
+    } else if (typeof opts.subPage === 'number') {
+      targetPage = opts.subPage;
+    }
+  } else if (typeof opts.subPage === 'number') {
+    targetPage = opts.subPage;
+  }
+
+  goSubPage(targetPage, false);
+}
+
+function goSubPage(p, animate = true) {
+  const idoc = $('#rFrame').contentDocument;
+  const wrap = idoc && idoc.getElementById('rPageWrap');
+  R.subPage = Math.min(Math.max(0, p), R.subTotal - 1);
+  if (wrap && R.readMode === 'paged') {
+    wrap.style.transition = animate ? 'transform 0.22s cubic-bezier(0.22, 1, 0.36, 1)' : 'none';
+    const offset = R.subPage * (R.pageW + R.pageGap);
+    wrap.style.transform = `translateX(-${offset}px)`;
+  }
+  hideLineActionBar();
+  updatePosAndProgress();
+}
+
+function updatePosAndProgress() {
+  if (R.mode === 'pdf') {
+    posText();
+    return;
+  }
+  const totalSec = getTotalUnits();
+  const secTitle = R.mode === 'epub'
+    ? (R.toc.find(x => R.spine[R.i] && x.path === R.spine[R.i].path)?.label || `অংশ ${R.i + 1}`)
+    : (R.sections[R.i]?.title || `অংশ ${R.i + 1}`);
+
+  if (R.readMode === 'paged') {
+    $('#rPos').textContent = `পৃষ্ঠা ${R.subPage + 1} / ${R.subTotal} · ${secTitle} (${R.i + 1}/${totalSec})`;
+  } else {
+    $('#rPos').textContent = `${secTitle} (${R.i + 1} / ${totalSec})`;
+  }
+
+  // Smooth fractional progress across chapters + subPages
+  const secFrac = R.readMode === 'paged' ? ((R.subPage + 1) / R.subTotal) : 1;
+  const overall = ((R.i + secFrac) / totalSec) * 100;
+  const pct = Math.min(100, Math.max(1, Math.round(overall)));
+  $('#rProgressFill').style.width = pct + '%';
+  $('#rProgressText').textContent = R.readMode === 'paged'
+    ? `পৃষ্ঠা ${R.subPage + 1}/${R.subTotal} · মোট ${pct}%`
+    : `${pct}% পড়া হয়েছে (${R.i + 1}/${totalSec})`;
+
+  const atFirst = R.i <= 0 && (R.readMode !== 'paged' || R.subPage <= 0);
+  const atLast = R.i >= totalSec - 1 && (R.readMode !== 'paged' || R.subPage >= R.subTotal - 1);
+  $('#rPrev').disabled = atFirst;
+  $('#rNext').disabled = atLast && !isLockedIndex(R.i + 1);
+  updateBookmarkUI();
+}
+
+/* ---------- Line / Paragraph Marking Inside Iframe ---------- */
+function hideLineActionBar() {
+  $('#rLineActionBar').hidden = true;
+  R.selectedBlock = null;
+  const idoc = $('#rFrame').contentDocument;
+  if (idoc) idoc.querySelectorAll('.r-block-selected').forEach(el => el.classList.remove('r-block-selected'));
+}
+
+function setupMarkableBlocks(idoc) {
+  const wrap = idoc.getElementById('rPageWrap');
+  if (!wrap) return;
+  const candidates = [...wrap.querySelectorAll('p, li, blockquote, h1, h2, h3, td')].filter(el => el.textContent.trim().length > 0);
+  candidates.forEach((el, idx) => {
+    el.setAttribute('data-bm-block', idx);
+  });
+  refreshIframeMarkers();
+}
+
+function refreshIframeMarkers() {
+  const idoc = $('#rFrame').contentDocument;
+  if (!idoc) return;
+  idoc.querySelectorAll('[data-bm-block]').forEach(el => {
+    el.classList.remove('r-block-saved', 'r-block-lastread');
+  });
+
+  // Highlight last-read line if in current section
+  if (R.lastRead && R.lastRead.idx === R.i && typeof R.lastRead.blockIdx === 'number') {
+    const el = idoc.querySelector(`[data-bm-block="${R.lastRead.blockIdx}"]`);
+    if (el) el.classList.add('r-block-lastread');
+  }
+
+  // Highlight any saved line bookmarks in current section
+  R.bookmarks.forEach(bm => {
+    if (bm.type === 'line' && bm.idx === R.i && typeof bm.blockIdx === 'number') {
+      const el = idoc.querySelector(`[data-bm-block="${bm.blockIdx}"]`);
+      if (el) el.classList.add('r-block-saved');
+    }
+  });
+}
+
+function handleBlockTap(el) {
+  const blockIdx = +el.getAttribute('data-bm-block');
+  const snippet = el.textContent.trim().replace(/\s+/g, ' ').slice(0, 120);
+  const idoc = $('#rFrame').contentDocument;
+  if (idoc) idoc.querySelectorAll('.r-block-selected').forEach(x => x.classList.remove('r-block-selected'));
+  el.classList.add('r-block-selected');
+
+  R.selectedBlock = { blockIdx, snippet, el };
+  $('#rLinePreview').textContent = `"${snippet}"`;
+
+  const hasExistingMark =
+    (R.lastRead && R.lastRead.idx === R.i && R.lastRead.blockIdx === blockIdx) ||
+    R.bookmarks.some(b => b.type === 'line' && b.idx === R.i && b.blockIdx === blockIdx);
+
+  $('#btnClearLineMark').hidden = !hasExistingMark;
+  $('#rLineActionBar').hidden = false;
+}
+
+$('#btnMarkLastRead').onclick = () => {
+  if (!R.selectedBlock) return;
+  R.lastRead = {
+    idx: R.i,
+    subPage: R.readMode === 'paged' ? R.subPage : 0,
+    blockIdx: R.selectedBlock.blockIdx,
+    snippet: R.selectedBlock.snippet,
+    label: currentUnitLabel()
+  };
+  saveLastRead();
+  refreshIframeMarkers();
+  hideLineActionBar();
+  note('এই লাইন পর্যন্ত পঠিত চিহ্ন সেভ হয়েছে');
+};
+
+$('#btnSaveLineNote').onclick = () => {
+  if (!R.selectedBlock) return;
+  const existsIdx = R.bookmarks.findIndex(b => b.type === 'line' && b.idx === R.i && b.blockIdx === R.selectedBlock.blockIdx);
+  if (existsIdx >= 0) {
+    note('এই লাইনটি আগেই মার্ক করা আছে');
+  } else {
+    R.bookmarks.unshift({
+      type: 'line',
+      idx: R.i,
+      subPage: R.readMode === 'paged' ? R.subPage : 0,
+      blockIdx: R.selectedBlock.blockIdx,
+      snippet: R.selectedBlock.snippet,
+      label: currentUnitLabel()
+    });
+    saveBookmarks();
+    refreshIframeMarkers();
+    note('লাইনটি বুকমার্কে সেভ হয়েছে');
+  }
+  hideLineActionBar();
+};
+
+$('#btnClearLineMark').onclick = () => {
+  if (!R.selectedBlock) return;
+  const bIdx = R.selectedBlock.blockIdx;
+  if (R.lastRead && R.lastRead.idx === R.i && R.lastRead.blockIdx === bIdx) {
+    R.lastRead = null;
+    saveLastRead();
+  }
+  const bmPos = R.bookmarks.findIndex(b => b.type === 'line' && b.idx === R.i && b.blockIdx === bIdx);
+  if (bmPos >= 0) {
+    R.bookmarks.splice(bmPos, 1);
+    saveBookmarks();
+  }
+  refreshIframeMarkers();
+  hideLineActionBar();
+  note('লাইন চিহ্ন মুছে ফেলা হয়েছে');
+};
+
+$('#btnCloseLineBar').onclick = hideLineActionBar;
 
 /* ---------- Reader Shell ---------- */
 function setMode(m) {
@@ -239,20 +594,23 @@ function setMode(m) {
   const isPdf = m === 'pdf';
   $('#rFrame').hidden = isPdf;
   $('#rPdf').hidden = !isPdf;
+  $('#rReadModeRow').hidden = isPdf;
   $('#rLineHeightRow').hidden = isPdf;
   $('#rThemeRow').hidden = isPdf;
   $('#rDrawer').hidden = true;
   $('#rSettingsPanel').hidden = true;
+  hideLineActionBar();
   hidePaywall();
-  $('#rToc').textContent = isPdf ? 'পৃষ্ঠা / বুকমার্ক' : 'সূচি';
+  $('#rToc').textContent = isPdf ? 'পৃষ্ঠা / মার্ক' : 'সূচি';
+  syncThemeSurface();
   syncSettingsUI();
 }
 
 function syncSettingsUI() {
   $('#rFsLabel').textContent = R.mode === 'pdf' ? Math.round(P.zoom * 100) + '%' : R.fs + '%';
+  $$('.rmode-btn').forEach(b => b.classList.toggle('active', b.dataset.rmode === R.readMode));
   $$('.lh-btn').forEach(b => b.classList.toggle('active', +b.dataset.lh === R.lh));
   $$('.th-btn').forEach(b => b.classList.toggle('active', +b.dataset.th === R.theme));
-  // Sync quick limit selector
   if (!R.limitOn) $('#rQuickLimit').value = '0';
   else if (R.limitType === 'percent' && (R.limitVal === 20 || R.limitVal === 30)) $('#rQuickLimit').value = R.limitVal + 'p';
   else if (R.limitType === 'chapters' && [1, 2, 3].includes(R.limitVal)) $('#rQuickLimit').value = String(R.limitVal);
@@ -269,8 +627,48 @@ function closeReader() {
   if (d) { d.open(); d.write(''); d.close(); }
   $('#reader').hidden = true;
   $('#rSettingsPanel').hidden = true;
+  hideLineActionBar();
   hidePaywall();
   document.body.style.overflow = '';
+}
+
+function bindIframeInteractions(idoc) {
+  attachContentProtection(idoc);
+  setupMarkableBlocks(idoc);
+
+  // Tap/Click handling: tap on line/paragraph to mark, or tap left/right screen edge in paged mode to turn page
+  let sx = 0, sy = 0, st = 0;
+  idoc.addEventListener('touchstart', e => {
+    sx = e.changedTouches[0].clientX;
+    sy = e.changedTouches[0].clientY;
+    st = Date.now();
+  }, { passive: true });
+
+  idoc.addEventListener('touchend', e => {
+    const dx = e.changedTouches[0].clientX - sx;
+    const dy = e.changedTouches[0].clientY - sy;
+    if (Math.abs(dx) > 65 && Math.abs(dy) < 60) {
+      if (dx < 0) next(); else prev();
+    }
+  }, { passive: true });
+
+  idoc.addEventListener('click', e => {
+    if (e.target.closest && e.target.closest('a[href]')) return;
+    const block = e.target.closest && e.target.closest('[data-bm-block]');
+    if (block) {
+      handleBlockTap(block);
+      return;
+    }
+    // Tap empty margin in paged mode to turn page
+    if (R.readMode === 'paged') {
+      const vw = idoc.documentElement.clientWidth || window.innerWidth;
+      if (e.clientX < vw * 0.22) prev();
+      else if (e.clientX > vw * 0.78) next();
+      else hideLineActionBar();
+    } else {
+      hideLineActionBar();
+    }
+  });
 }
 
 /* ---------- Open Project Preview (from Ebook Maker) ---------- */
@@ -281,6 +679,7 @@ window.openProjectPreview = function ({ title, lang, sections, previewConfig }) 
   R.key = 'project:' + title;
   R.sections = sections;
   R.i = 0;
+  R.subPage = 0;
   R.unlocked = false;
   R.limitOn = !!(previewConfig && previewConfig.limitOn);
   R.limitType = (previewConfig && previewConfig.limitType) || 'chapters';
@@ -306,54 +705,51 @@ function renderProjectToc() {
     b.innerHTML = `<span>${esc(sec.title)}</span>${locked ? '<span>🔒</span>' : ''}`;
     b.onclick = () => {
       $('#rDrawer').hidden = true;
-      jumpToUnit(idx);
+      if (isLockedIndex(idx)) showPaywall(idx);
+      else renderProjectSection(idx);
     };
     li.appendChild(b);
     ol.appendChild(li);
   });
 }
 
-function renderProjectSection(idx) {
+function renderProjectSection(idx, opts = {}) {
   if (isLockedIndex(idx)) {
     showPaywall(idx);
     return;
   }
   hidePaywall();
+  hideLineActionBar();
   const sec = R.sections[idx];
   if (!sec) return;
   R.i = idx;
   const idoc = $('#rFrame').contentDocument;
   idoc.open();
-  idoc.write('<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body></body></html>');
+  idoc.write('<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body><div id="rPageWrap"></div></body></html>');
   idoc.close();
 
   const st = (css, id) => { const e = idoc.createElement('style'); if (id) e.id = id; e.textContent = css; idoc.head.appendChild(e); };
   st(BASE_CSS);
   st(userCss(), 'rs');
-  idoc.body.innerHTML = sec.html;
-  attachContentProtection(idoc);
+  const wrap = idoc.getElementById('rPageWrap');
+  wrap.innerHTML = sec.html;
 
   // Internal TOC link navigation inside iframe
-  idoc.querySelectorAll('a[data-goto-ch]').forEach(a => {
+  wrap.querySelectorAll('a[data-goto-ch]').forEach(a => {
     a.onclick = e => {
       e.preventDefault();
       const chIdx = +a.dataset.gotoCh;
       const targetSecIdx = R.sections.findIndex(s => s.chIndex === chIdx);
-      if (targetSecIdx >= 0) jumpToUnit(targetSecIdx);
+      if (targetSecIdx >= 0) {
+        if (isLockedIndex(targetSecIdx)) showPaywall(targetSecIdx);
+        else renderProjectSection(targetSecIdx);
+      }
     };
   });
 
-  // Swipe gestures
-  let sx = 0, sy = 0;
-  idoc.addEventListener('touchstart', e => { sx = e.changedTouches[0].clientX; sy = e.changedTouches[0].clientY; }, { passive: true });
-  idoc.addEventListener('touchend', e => {
-    const dx = e.changedTouches[0].clientX - sx, dy = e.changedTouches[0].clientY - sy;
-    if (Math.abs(dx) > 100 && Math.abs(dy) < 50) (dx < 0 ? next : prev)();
-  }, { passive: true });
-
-  $('#rFrame').style.background = R.theme === 1 ? '#f4ecd8' : R.theme === 2 ? '#14181f' : '#fff';
-  $('#rPos').textContent = `${sec.title} (${idx + 1} / ${R.sections.length})`;
-  updateProgress();
+  bindIframeInteractions(idoc);
+  syncThemeSurface();
+  requestAnimationFrame(() => applyPaginationLayout(opts));
 }
 
 /* ---------- Open External File (EPUB / PDF / HTML / TXT) ---------- */
@@ -364,7 +760,6 @@ async function openBook(file) {
   $('#reader').hidden = false;
   document.body.style.overflow = 'hidden';
   R.unlocked = false;
-  // Inherit preview limit config from editor UI if enabled
   R.limitOn = $('#pvLimitOn') ? $('#pvLimitOn').checked : false;
   R.limitType = $('#pvLimitType') ? $('#pvLimitType').value : 'chapters';
   R.limitVal = $('#pvLimitVal') ? (+$('#pvLimitVal').value || 2) : 2;
@@ -401,7 +796,6 @@ function openTextOrHtml(name, raw, isPlain) {
   const html = isPlain
     ? raw.split(/\n{2,}/).map(p => `<p>${esc(p.trim()).replace(/\n/g, '<br>')}</p>`).join('')
     : raw;
-  // Split into sections by <h1> if multiple chapters exist, otherwise paginate into readable chunks
   const doc = new DOMParser().parseFromString('<body>' + html + '</body>', 'text/html');
   doc.querySelectorAll('script,iframe,object,embed').forEach(n => n.remove());
   const h1s = [...doc.querySelectorAll('h1')];
@@ -419,13 +813,7 @@ function openTextOrHtml(name, raw, isPlain) {
     });
     if (curHtml.trim()) sections.push({ title: curTitle, html: curHtml });
   } else {
-    const blocks = [...doc.body.children];
-    const perPage = 18;
-    for (let i = 0; i < blocks.length; i += perPage) {
-      const slice = blocks.slice(i, i + perPage).map(el => el.outerHTML).join('');
-      sections.push({ title: `পৃষ্ঠা ${sections.length + 1}`, html: slice });
-    }
-    if (!sections.length) sections.push({ title: name, html: doc.body.innerHTML || '<p>খালি ফাইল</p>' });
+    sections.push({ title: name, html: doc.body.innerHTML || '<p>খালি ফাইল</p>' });
   }
   R.sections = sections;
   renderProjectToc();
@@ -492,9 +880,10 @@ function renderEpubToc() {
   });
 }
 
-async function renderEpubChapter(i, hash) {
+async function renderEpubChapter(i, hash, opts = {}) {
   if (isLockedIndex(i)) { showPaywall(i); return; }
   hidePaywall();
+  hideLineActionBar();
   const it = R.spine[i]; if (!it) return; const tk = ++R.tk;
   const raw = await zipText(it.path);
   let doc = new DOMParser().parseFromString(raw, 'application/xhtml+xml');
@@ -507,14 +896,25 @@ async function renderEpubChapter(i, hash) {
   for (const im of doc.querySelectorAll('image')) { const a = im.getAttribute('xlink:href') ? 'xlink:href' : 'href', v = im.getAttribute(a); if (v) { const u = await blobUrl(resolve(it.path, v)); if (u) im.setAttribute(a, u); } }
   if (tk !== R.tk) return;
   R.i = i; const idoc = $('#rFrame').contentDocument;
-  idoc.open(); idoc.write('<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body></body></html>'); idoc.close();
+  idoc.open(); idoc.write('<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body><div id="rPageWrap"></div></body></html>'); idoc.close();
   const st = (css, id) => { const e = idoc.createElement('style'); if (id) e.id = id; e.textContent = css; idoc.head.appendChild(e); };
-  st(BASE_CSS); styles.forEach(c => st(c)); st(userCss(), 'rs');
-  [...doc.body.childNodes].forEach(n => idoc.body.appendChild(idoc.importNode(n, true)));
-  if (doc.body.getAttribute('class')) idoc.body.className = doc.body.getAttribute('class');
-  attachContentProtection(idoc);
+  styles.forEach(c => st(c));
+  st(BASE_CSS);
+  st(userCss(), 'rs');
+  const wrap = idoc.getElementById('rPageWrap');
+  [...doc.body.childNodes].forEach(n => wrap.appendChild(idoc.importNode(n, true)));
+  if (doc.body.getAttribute('class')) wrap.className = doc.body.getAttribute('class');
 
-  const toId = id => { const el = id && idoc.getElementById(id); if (el) el.scrollIntoView(); };
+  const toId = id => {
+    const el = id && idoc.getElementById(id);
+    if (!el) return;
+    if (R.readMode === 'paged') {
+      const targetPage = Math.floor((el.offsetLeft + 4) / (R.pageW + R.pageGap));
+      goSubPage(targetPage, false);
+    } else {
+      el.scrollIntoView();
+    }
+  };
   idoc.addEventListener('click', e => {
     const a = e.target.closest && e.target.closest('a[href]'); if (!a) return; e.preventDefault();
     const h = a.getAttribute('href'); if (h.startsWith('#')) return toId(decodeURIComponent(h.slice(1)));
@@ -522,21 +922,31 @@ async function renderEpubChapter(i, hash) {
     const [p, hh] = h.split('#'), k = R.spine.findIndex(s => s.path === resolve(it.path, p));
     if (k >= 0) renderEpubChapter(k, hh);
   });
-  let sx = 0, sy = 0;
-  idoc.addEventListener('touchstart', e => { sx = e.changedTouches[0].clientX; sy = e.changedTouches[0].clientY; }, { passive: true });
-  idoc.addEventListener('touchend', e => { const dx = e.changedTouches[0].clientX - sx, dy = e.changedTouches[0].clientY - sy; if (Math.abs(dx) > 100 && Math.abs(dy) < 50) (dx < 0 ? next : prev)(); }, { passive: true });
-  if (hash) toId(hash); else idoc.defaultView.scrollTo(0, 0);
-  $('#rFrame').style.background = R.theme === 1 ? '#f4ecd8' : R.theme === 2 ? '#14181f' : '#fff';
-  $('#rPos').textContent = `অংশ ${i + 1} / ${R.spine.length}`;
-  updateProgress();
+
+  bindIframeInteractions(idoc);
+  syncThemeSurface();
+  requestAnimationFrame(() => {
+    applyPaginationLayout(opts);
+    if (hash) toId(hash);
+    else if (R.readMode !== 'paged') idoc.defaultView.scrollTo(0, 0);
+  });
   try { localStorage.setItem('rp:' + R.key, i); } catch (e) { }
 }
 
 function applyStyle() {
   const d = $('#rFrame').contentDocument, s = d && d.getElementById('rs');
   if (s) s.textContent = userCss();
-  $('#rFrame').style.background = R.theme === 1 ? '#f4ecd8' : R.theme === 2 ? '#14181f' : '#fff';
+  syncThemeSurface();
   syncSettingsUI();
+  if (R.mode !== 'pdf') {
+    const keepRatio = R.subTotal > 1 ? (R.subPage / (R.subTotal - 1)) : 0;
+    requestAnimationFrame(() => {
+      applyPaginationLayout();
+      if (R.readMode === 'paged' && R.subTotal > 1) {
+        goSubPage(Math.round(keepRatio * (R.subTotal - 1)), false);
+      }
+    });
+  }
 }
 
 /* ---------- PDF ---------- */
@@ -562,7 +972,7 @@ function buildPdfToc() {
     if (locked) li.className = 'locked';
     const b = document.createElement('button');
     b.innerHTML = `<span>পৃষ্ঠা ${n}</span>${locked ? '<span>🔒</span>' : ''}`;
-    b.onclick = () => { $('#rDrawer').hidden = true; jumpToUnit(n - 1); };
+    b.onclick = () => { $('#rDrawer').hidden = true; if (isLockedIndex(n - 1)) showPaywall(n - 1); else goPdf(n); };
     li.appendChild(b); ol.appendChild(li);
   }
 }
@@ -580,7 +990,6 @@ function buildPages() {
     d.style.width = P.vp.width * s + 'px'; d.style.height = P.vp.height * s + 'px';
     box.appendChild(d); P.divs.push(d); P.io.observe(d);
   }
-  // If preview limit is active, add a teaser card at the bottom of scroll
   if (maxPage < P.pdf.numPages) {
     const lockCard = document.createElement('div');
     lockCard.style.cssText = 'background:#fff;padding:24px;border-radius:10px;text-align:center;max-width:90%;margin:12px auto;box-shadow:0 4px 16px rgba(0,0,0,0.3)';
@@ -610,8 +1019,14 @@ function goPdf(n) {
 }
 function posText() {
   if (P.pdf) {
-    $('#rPos').textContent = `পৃষ্ঠা ${P.cur} / ${P.pdf.numPages}`;
-    updateProgress();
+    const total = P.pdf.numPages;
+    const pct = Math.min(100, Math.max(1, Math.round((P.cur / total) * 100)));
+    $('#rPos').textContent = `পৃষ্ঠা ${P.cur} / ${total}`;
+    $('#rProgressFill').style.width = pct + '%';
+    $('#rProgressText').textContent = `${pct}% পড়া হয়েছে (${P.cur}/${total})`;
+    $('#rPrev').disabled = P.cur <= 1;
+    $('#rNext').disabled = P.cur >= total && !isLockedIndex(P.cur);
+    updateBookmarkUI();
   }
 }
 function zoomPdf(d) {
@@ -630,19 +1045,60 @@ pbox().addEventListener('scroll', () => {
     P.cur = n; posText(); try { localStorage.setItem('rp:' + R.key, n); } catch (e) { }
   });
 });
-let rz; window.addEventListener('resize', () => { clearTimeout(rz); rz = setTimeout(() => { if (P.pdf && pbox().clientWidth !== P.w) { P.w = pbox().clientWidth; const n = P.cur; buildPages(); goPdf(n); } }, 250); });
 
-/* ---------- Controls & Navigation ---------- */
+let rz;
+window.addEventListener('resize', () => {
+  clearTimeout(rz);
+  rz = setTimeout(() => {
+    if ($('#reader').hidden) return;
+    if (R.mode === 'pdf' && P.pdf && pbox().clientWidth !== P.w) {
+      P.w = pbox().clientWidth;
+      const n = P.cur;
+      buildPages();
+      goPdf(n);
+    } else if (R.mode !== 'pdf') {
+      const keepRatio = R.subTotal > 1 ? (R.subPage / (R.subTotal - 1)) : 0;
+      applyPaginationLayout();
+      if (R.readMode === 'paged' && R.subTotal > 1) {
+        goSubPage(Math.round(keepRatio * (R.subTotal - 1)), false);
+      }
+    }
+  }, 220);
+});
+
+/* ---------- Controls & Page-by-Page Navigation ---------- */
 function next() {
-  const cur = currentUnitIndex();
+  if (R.mode === 'pdf') {
+    if (P.cur < P.pdf.numPages) goPdf(P.cur + 1);
+    return;
+  }
+  if (R.readMode === 'paged' && R.subPage + 1 < R.subTotal) {
+    goSubPage(R.subPage + 1, true);
+    return;
+  }
   const total = getTotalUnits();
-  if (cur + 1 >= total) return;
-  jumpToUnit(cur + 1);
+  if (R.i + 1 >= total) return;
+  if (isLockedIndex(R.i + 1)) {
+    showPaywall(R.i + 1);
+    return;
+  }
+  if (R.mode === 'epub') renderEpubChapter(R.i + 1);
+  else renderProjectSection(R.i + 1);
 }
+
 function prev() {
-  const cur = currentUnitIndex();
-  if (cur <= 0) return;
-  jumpToUnit(cur - 1);
+  if (R.mode === 'pdf') {
+    if (P.cur > 1) goPdf(P.cur - 1);
+    return;
+  }
+  if (R.readMode === 'paged' && R.subPage > 0) {
+    goSubPage(R.subPage - 1, true);
+    return;
+  }
+  if (R.i <= 0) return;
+  const opts = R.readMode === 'paged' ? { lastPage: true } : {};
+  if (R.mode === 'epub') renderEpubChapter(R.i - 1, '', opts);
+  else renderProjectSection(R.i - 1, opts);
 }
 
 $('#btnRead').onclick = () => $('#fileRead').click();
@@ -650,6 +1106,10 @@ $('#fileRead').onchange = e => { const f = e.target.files[0]; e.target.value = '
 $('#rClose').onclick = closeReader;
 $('#rNext').onclick = next;
 $('#rPrev').onclick = prev;
+
+$('#rJumpLastBtn').onclick = () => {
+  if (R.lastRead) jumpToLocation(R.lastRead);
+};
 
 // Settings popover toggle
 $('#rSettingsBtn').onclick = e => {
@@ -675,21 +1135,29 @@ $('#tabBookmarks').onclick = () => {
   updateBookmarkUI();
 };
 
-// Bookmark toggle
+// Page Bookmark toggle
 $('#rBookmarkBtn').onclick = () => {
   const idx = currentUnitIndex();
-  const existing = R.bookmarks.findIndex(b => b.idx === idx);
+  const sp = currentSubPage();
+  const existing = R.bookmarks.findIndex(b => b.type !== 'line' && b.idx === idx && (b.subPage || 0) === sp);
   if (existing >= 0) {
     R.bookmarks.splice(existing, 1);
-    note('বুকমার্ক সরানো হয়েছে');
+    note('পৃষ্ঠার মার্ক সরানো হয়েছে');
   } else {
-    R.bookmarks.push({ idx, label: currentUnitLabel() });
-    note('বুকমার্ক যুক্ত হয়েছে');
+    R.bookmarks.unshift({ type: 'page', idx, subPage: sp, label: currentUnitLabel() });
+    note('এই পৃষ্ঠাটি মার্ক করা হয়েছে');
   }
   saveBookmarks();
 };
 
-// Font size, line spacing, themes & quick limit
+// Read Mode (Paged vs Scroll), Font size, Line spacing, Themes & Quick limit
+$$('.rmode-btn').forEach(b => b.onclick = () => {
+  R.readMode = b.dataset.rmode;
+  try { localStorage.setItem('rrmode', R.readMode); } catch (e) { }
+  syncSettingsUI();
+  applyPaginationLayout();
+});
+
 const setFs = d => {
   R.fs = Math.min(220, Math.max(70, R.fs + d));
   try { localStorage.setItem('rfs', R.fs); } catch (e) { }
@@ -741,7 +1209,10 @@ $('#rUnlockBtn').onclick = () => {
 };
 $('#rPaywallBackBtn').onclick = () => {
   hidePaywall();
-  jumpToUnit(getAllowedMaxIndex());
+  const maxIdx = getAllowedMaxIndex();
+  if (R.mode === 'pdf') goPdf(maxIdx + 1);
+  else if (R.mode === 'epub') renderEpubChapter(maxIdx);
+  else renderProjectSection(maxIdx);
 };
 
 document.addEventListener('click', e => {
@@ -753,7 +1224,8 @@ document.addEventListener('click', e => {
 document.addEventListener('keydown', e => {
   if ($('#reader').hidden) return;
   if (e.key === 'Escape') {
-    if (!$('#rSettingsPanel').hidden) $('#rSettingsPanel').hidden = true;
+    if (!$('#rLineActionBar').hidden) hideLineActionBar();
+    else if (!$('#rSettingsPanel').hidden) $('#rSettingsPanel').hidden = true;
     else if (!$('#rDrawer').hidden) $('#rDrawer').hidden = true;
     else closeReader();
   } else if (e.key === 'ArrowRight') next();
@@ -785,7 +1257,8 @@ if (AppPlugin) {
   AppPlugin.addListener('appUrlOpen', e => openFromUri(e && e.url));
   AppPlugin.getLaunchUrl().then(r => { if (r && r.url) openFromUri(r.url); }).catch(() => { });
   AppPlugin.addListener('backButton', () => {
-    if (!$('#rPaywall').hidden) hidePaywall();
+    if (!$('#rLineActionBar').hidden) hideLineActionBar();
+    else if (!$('#rPaywall').hidden) hidePaywall();
     else if (!$('#rDrawer').hidden) $('#rDrawer').hidden = true;
     else if (!$('#rSettingsPanel').hidden) $('#rSettingsPanel').hidden = true;
     else if (!$('#reader').hidden) closeReader();

@@ -154,9 +154,10 @@
       <span id="rPos"></span>
     </div>
     <div class="rActions">
-      <button id="rBookmarkBtn" class="ghost" title="বুকমার্ক যুক্ত করুন">☆</button>
+      <button id="rJumpLastBtn" class="ghost" title="শেষ পঠিত স্থানে যান" hidden>📍 শেষ পড়া</button>
+      <button id="rBookmarkBtn" class="ghost" title="এই পৃষ্ঠাটি মার্ক / বুকমার্ক করুন">☆</button>
       <button id="rSettingsBtn" class="ghost" title="পড়ার সেটিংস">Aa</button>
-      <button id="rToc" class="ghost" title="সূচিপত্র ও বুকমার্ক">সূচি</button>
+      <button id="rToc" class="ghost" title="সূচিপত্র ও মার্ক করা পৃষ্ঠা/লাইন">সূচি</button>
     </div>
   </div>
 
@@ -167,6 +168,13 @@
 
   <!-- Typography & Theme Settings Popover -->
   <div id="rSettingsPanel" class="rSettingsPanel" hidden>
+    <div class="rSetRow" id="rReadModeRow">
+      <span>পড়ার ধরন</span>
+      <div class="rBtnGroup">
+        <button data-rmode="paged" class="ghost rmode-btn active">পৃষ্ঠা (Page)</button>
+        <button data-rmode="scroll" class="ghost rmode-btn">স্ক্রল</button>
+      </div>
+    </div>
     <div class="rSetRow">
       <span>ফন্ট সাইজ</span>
       <div class="rBtnGroup">
@@ -204,9 +212,20 @@
     </div>
   </div>
 
-  <div class="rBody">
+  <div id="rBody" class="rBody">
     <iframe id="rFrame" title="বই" sandbox="allow-same-origin allow-scripts"></iframe>
     <div id="rPdf" class="rPdf" hidden></div>
+
+    <!-- Floating Line Marking Action Bar (appears when user taps a line/paragraph) -->
+    <div id="rLineActionBar" class="rLineActionBar" hidden>
+      <span id="rLinePreview" class="rLinePreview"></span>
+      <div class="rLineBtns">
+        <button id="btnMarkLastRead" class="primary">📍 এ পর্যন্ত পড়েছি</button>
+        <button id="btnSaveLineNote" class="ghost">🖍️ লাইন সেভ করুন</button>
+        <button id="btnClearLineMark" class="ghost danger" hidden>✕ চিহ্ন মুছুন</button>
+        <button id="btnCloseLineBar" class="ghost" aria-label="বন্ধ">✕</button>
+      </div>
+    </div>
 
     <!-- Sample Limit Paywall / Unlock Overlay -->
     <div id="rPaywall" class="rPaywall" hidden>
@@ -222,25 +241,26 @@
       </div>
     </div>
 
-    <!-- TOC & Bookmarks Drawer -->
+    <!-- TOC & Bookmarks/Marked Lines Drawer -->
     <aside id="rDrawer" class="rDrawer" hidden>
       <div class="rDrawerTabs">
         <button id="tabToc" class="active">সূচিপত্র</button>
-        <button id="tabBookmarks">বুকমার্ক (<span id="bmCount">0</span>)</button>
+        <button id="tabBookmarks">মার্ক ও বুকমার্ক (<span id="bmCount">0</span>)</button>
       </div>
       <div id="paneToc" class="rDrawerPane">
         <ol id="rTocList"></ol>
       </div>
       <div id="paneBookmarks" class="rDrawerPane" hidden>
+        <div id="rLastReadCard" class="rLastReadCard" hidden></div>
         <ul id="rBmList" class="rBmList"></ul>
       </div>
     </aside>
   </div>
 
   <div class="rNav">
-    <button id="rPrev">‹ আগের</button>
+    <button id="rPrev">‹ আগের পৃষ্ঠা</button>
     <span id="rProgressText" class="rProgressText">০% পড়া হয়েছে</span>
-    <button id="rNext">পরের ›</button>
+    <button id="rNext">পরের পৃষ্ঠা ›</button>
   </div>
 </div>
 
