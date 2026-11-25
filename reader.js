@@ -82,21 +82,48 @@ const BASE_CSS = `
   }
   html.is-paged, html.is-paged body {
     height: 100% !important;
+    width: 100% !important;
     overflow: hidden !important;
+  }
+  html.is-paged body {
+    padding: 0 16px !important;
   }
   html.is-paged #rPageWrap {
     max-width: none !important;
     margin: 0 !important;
-    padding: 16px 18px 20px !important;
-    column-fill: auto;
-    transition: transform 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+    padding: 14px 0 18px !important;
+    column-fill: auto !important;
     will-change: transform;
+  }
+  html.is-paged #rPageWrap > * {
+    max-width: 100% !important;
+  }
+  html.is-paged div,
+  html.is-paged section,
+  html.is-paged article,
+  html.is-paged p,
+  html.is-paged ul,
+  html.is-paged ol,
+  html.is-paged blockquote {
+    break-inside: auto !important;
+    page-break-inside: auto !important;
   }
   h1, h2, h3 { line-height: 1.35; break-after: avoid; page-break-after: avoid; }
   p, li, blockquote { orphans: 2; widows: 2; }
-  table { width: 100% !important; max-width: 100% !important; border-collapse: collapse; margin: 1em 0; }
-  th, td { border: 1px solid #bbb; padding: 6px 8px; text-align: left; }
-  img, svg, video, figure { max-width: 100% !important; height: auto !important; pointer-events: none; break-inside: avoid; }
+  pre, code { white-space: pre-wrap !important; word-break: break-word !important; max-width: 100% !important; }
+  table { width: 100% !important; max-width: 100% !important; border-collapse: collapse; margin: 1em 0; table-layout: fixed; }
+  th, td { border: 1px solid #bbb; padding: 6px 8px; text-align: left; overflow-wrap: anywhere; }
+  img, svg, video, figure {
+    max-width: 100% !important;
+    max-height: 72vh !important;
+    width: auto !important;
+    height: auto !important;
+    object-fit: contain;
+    pointer-events: none;
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+  figure img { width: 100% !important; }
   ol.toc { list-style: none; padding: 0; }
   ol.toc li { margin: 0.65em 0; border-bottom: 1px dashed rgba(128,128,128,0.25); padding-bottom: 4px; }
   ol.toc a { text-decoration: none; color: inherit; font-weight: 500; }
@@ -396,20 +423,25 @@ function applyPaginationLayout(opts = {}) {
 
   htmlEl.classList.add('is-paged');
   const frameEl = $('#rFrame');
-  const vw = Math.max(240, frameEl.clientWidth || window.innerWidth);
-  const vh = Math.max(240, frameEl.clientHeight || (window.innerHeight - 100));
-  const gap = R.pageGap;
+  const outerW = Math.max(240, frameEl.clientWidth || window.innerWidth);
+  const outerH = Math.max(240, frameEl.clientHeight || (window.innerHeight - 100));
+  // body has `padding: 0 16px` in paged mode, so exact inner column width is outerW - 32
+  const sidePad = 16;
+  const colW = Math.max(200, outerW - sidePad * 2);
+  const gap = 32;
 
-  R.pageW = vw;
-  wrap.style.width = vw + 'px';
-  wrap.style.height = vh + 'px';
-  wrap.style.columnWidth = vw + 'px';
+  R.pageW = colW;
+  R.pageGap = gap;
+  wrap.style.width = colW + 'px';
+  wrap.style.height = outerH + 'px';
+  wrap.style.columnWidth = colW + 'px';
   wrap.style.columnGap = gap + 'px';
   wrap.style.transform = 'translateX(0px)';
 
-  // Force layout measurement to count exact horizontal pages
+  // Force synchronous reflow so scrollWidth reflects exact column count
   const sw = wrap.scrollWidth;
-  const totalPages = Math.max(1, Math.round((sw + gap) / (vw + gap)));
+  const stride = colW + gap;
+  const totalPages = Math.max(1, Math.ceil((sw - 2) / stride));
   R.subTotal = totalPages;
 
   let targetPage = 0;
@@ -418,13 +450,14 @@ function applyPaginationLayout(opts = {}) {
   } else if (typeof opts.blockIdx === 'number') {
     const targetEl = wrap.querySelector(`[data-bm-block="${opts.blockIdx}"]`);
     if (targetEl) {
-      // offsetLeft inside multi-column container tells which column page the line sits on
-      targetPage = Math.floor((targetEl.offsetLeft + 4) / (vw + gap));
+      targetPage = Math.floor((targetEl.offsetLeft + 2) / stride);
     } else if (typeof opts.subPage === 'number') {
       targetPage = opts.subPage;
     }
   } else if (typeof opts.subPage === 'number') {
     targetPage = opts.subPage;
+  } else if (opts.keepCurrent) {
+    targetPage = Math.min(R.subPage, totalPages - 1);
   }
 
   goSubPage(targetPage, false);
@@ -459,7 +492,6 @@ function updatePosAndProgress() {
     $('#rPos').textContent = `${secTitle} (${R.i + 1} / ${totalSec})`;
   }
 
-  // Smooth fractional progress across chapters + subPages
   const secFrac = R.readMode === 'paged' ? ((R.subPage + 1) / R.subTotal) : 1;
   const overall = ((R.i + secFrac) / totalSec) * 100;
   const pct = Math.min(100, Math.max(1, Math.round(overall)));
@@ -749,6 +781,12 @@ function renderProjectSection(idx, opts = {}) {
 
   bindIframeInteractions(idoc);
   syncThemeSurface();
+  idoc.querySelectorAll('img').forEach(img => {
+    if (!img.complete) img.addEventListener('load', () => applyPaginationLayout({ keepCurrent: true }), { once: true });
+  });
+  if (idoc.fonts && idoc.fonts.ready) {
+    idoc.fonts.ready.then(() => applyPaginationLayout({ keepCurrent: true }));
+  }
   requestAnimationFrame(() => applyPaginationLayout(opts));
 }
 
@@ -925,6 +963,12 @@ async function renderEpubChapter(i, hash, opts = {}) {
 
   bindIframeInteractions(idoc);
   syncThemeSurface();
+  idoc.querySelectorAll('img').forEach(img => {
+    if (!img.complete) img.addEventListener('load', () => applyPaginationLayout({ keepCurrent: true }), { once: true });
+  });
+  if (idoc.fonts && idoc.fonts.ready) {
+    idoc.fonts.ready.then(() => applyPaginationLayout({ keepCurrent: true }));
+  }
   requestAnimationFrame(() => {
     applyPaginationLayout(opts);
     if (hash) toId(hash);
