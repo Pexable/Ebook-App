@@ -6,6 +6,7 @@ const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>
 const withAssets = h => String(h).replace(/asset:([\w.\-]+)/g, (m, n) => (S && S.assets && S.assets[n]) || m);
 const looksLikeCode = s => /<(style|script)\b|<!doctype|<html[\s>]/i.test(s);
 const CODE_HEAD = '<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><base target="_blank"><style>html{background:transparent;color:#1d2733}body{font-family:"Noto Serif Bengali","Kalpurush","SolaimanLipi",serif;line-height:1.8;margin:0;padding:6px 10px}img{max-width:100%;height:auto}</style><script>addEventListener("message",function(e){var d=e.data;if(d&&d.t==="th"){var h=document.documentElement;h.style.setProperty("color",d.fg,"important");h.style.background="transparent";if(document.body)document.body.style.color=d.fg}})</script>';
+
 /* ---------- embeds (YouTube / Vimeo) ---------- */
 const EMBED_RE = /<iframe\b|createElement\(\s*["']iframe["']\s*\)|youtube(?:-nocookie)?\.com\/embed|youtu\.be\/|player\.vimeo\.com/i;
 const EMBED_ALLOW = 'accelerometer; autoplay; clipboard-write; encrypted-media; fullscreen; gyroscope; picture-in-picture; web-share';
@@ -54,7 +55,7 @@ let S = null, timer, selFig = null, lastRange = null;
 const body = $('#body'), plain = $('#plain'), srcBox = $('#srcBox'), codeBox = $('#codeBox'), codeLive = $('#codeLive');
 let srcOn = false;
 
-/* ---------- storage (IndexedDB: large enough for images) ---------- */
+/* ---------- storage (IndexedDB) ---------- */
 const idb = {
   open() {
     return new Promise((res, rej) => {
@@ -148,7 +149,6 @@ function htmlToText(h) {
 }
 const ch2html = (c, h = c.html) => {
   if (c.mode === 'text') return textToHtml(h);
-  // Auto-fix if user previously pasted raw HTML tags into visual editor
   if (looksLikeEscapedHtml(h)) {
     return sanitize(unescapeHtmlEntities(h), true);
   }
@@ -177,7 +177,6 @@ function renderMeta() {
   const box = $('#coverBox'); box.innerHTML = '';
   if (S.cover) { const i = new Image(); i.alt = 'কভার'; i.src = S.cover; box.appendChild(i); } else box.textContent = 'কভার নেই';
 
-  // Preview limit settings
   $('#pvLimitOn').checked = !!S.preview.limitOn;
   $('#pvLimitFields').hidden = !S.preview.limitOn;
   $('#pvLimitType').value = S.preview.limitType || 'chapters';
@@ -236,7 +235,6 @@ $('#cTitle').oninput = e => { if (S.cur === -1) S.toc.title = e.target.value; el
 $('#tocOn').onchange = e => { S.toc.on = e.target.checked; renderList(); queueSave(); };
 $('#tocMode').onchange = e => { const auto = e.target.value === 'auto'; if (auto === S.toc.auto) return; commit(); if (!auto && !S.toc.html) S.toc.html = tocAuto(); S.toc.auto = auto; renderPane(); renderList(); queueSave(); };
 
-// Preview config events
 $('#pvLimitOn').onchange = e => { S.preview.limitOn = e.target.checked; $('#pvLimitFields').hidden = !e.target.checked; queueSave(); };
 $('#pvLimitType').onchange = e => {
   S.preview.limitType = e.target.value;
@@ -258,7 +256,6 @@ body.addEventListener('paste', e => {
   if (h && body.contentEditable === 'true') {
     document.execCommand('insertHTML', false, sanitize(h, true));
   } else if (txt && /<(h1|h2|h3|p|div|strong|em|u|span|ul|ol|li|table|blockquote)\b/i.test(txt) && body.contentEditable === 'true') {
-    // Smart HTML paste: if user pasted raw HTML code into the visual editor, render it cleanly!
     document.execCommand('insertHTML', false, sanitize(txt, true));
     toast('HTML ফরম্যাট স্বয়ংক্রিয়ভাবে রেন্ডার করা হয়েছে');
   } else {
@@ -271,7 +268,6 @@ $$('.toolbar button[data-cmd]').forEach(b => {
   b.onclick = () => { body.focus(); document.execCommand(b.dataset.cmd, false, b.dataset.val || null); commit(); queueSave(); };
 });
 
-/* ---------- writing mode (HTML / plain text), colour, HTML source ---------- */
 function showMode() {
   const toc = S.cur === -1, text = isText(), code = isCode(), tb = $('#toolbar');
   $('#modeBar').hidden = toc;
@@ -344,7 +340,8 @@ async function addImage(file) {
 }
 $('#btnImg').onclick = () => { if (S.cur === -1 && S.toc.auto) return toast('ছবি দিতে সূচিপত্রের ধরন "নিজে লিখব" করুন'); $('#fileImg').click(); };
 $('#fileImg').onchange = async e => { for (const f of e.target.files) await addImage(f); e.target.value = ''; };
-/* ---------- code mode: live preview, image assets, file upload ---------- */
+
+/* ---------- code mode ---------- */
 let liveT;
 function liveRender() {
   const sb = 'allow-scripts allow-popups allow-presentation' + (hasEmbed(codeBox.value) ? ' allow-same-origin' : '');
@@ -412,40 +409,6 @@ async function inlineRemote(h, fail) {
   }
   return h;
 }
-/* Runs INSIDE the hidden snapshot iframe. Scrolls through the page (to trigger scroll-reveal code),
-   force-shows text hidden by opacity:0 animations, and keeps the chapter's own dark/colored background. */
-function snapPage(id) {
-  addEventListener('load', function () {
-    var d = document, b = d.body, de = d.documentElement, y = 0, step = Math.max(200, innerHeight - 100);
-    function walk() {
-      var h = Math.max(de.scrollHeight, b.scrollHeight);
-      if (y < h && y < 40000) { scrollTo(0, y); y += step; setTimeout(walk, 120); }
-      else { scrollTo(0, 0); setTimeout(finish, 700); }
-    }
-    function solid(c) { return c && c !== 'transparent' && !/,\s*0\)$/.test(c); }
-    function finish() {
-      var s = [].map.call(d.querySelectorAll('style'), function (x) { return x.textContent; }).join('\n');
-      [].forEach.call(b.querySelectorAll('*'), function (el) {
-        if (!(el.textContent || '').trim() && el.tagName !== 'IMG') return;
-        var cs = getComputedStyle(el);
-        if (cs.display === 'none') return;
-        if (parseFloat(cs.opacity) < 0.05) { el.style.setProperty('opacity', '1', 'important'); el.style.setProperty('transform', 'none', 'important'); }
-      });
-      var bc = getComputedStyle(b), hc = getComputedStyle(de);
-      var bg = solid(bc.backgroundColor) ? bc.backgroundColor : (solid(hc.backgroundColor) ? hc.backgroundColor : '');
-      var gr = /gradient\(/.test(bc.backgroundImage) && !/url\(/.test(bc.backgroundImage) ? bc.backgroundImage : '';
-      var html = b.innerHTML;
-      if (bg || gr) {
-        html = '<div style="' + (bg ? 'background-color:' + bg + ';' : '') + (gr ? 'background-image:' + gr + ';' : '') +
-          'color:' + bc.color + ';padding:1em;border-radius:6px">' + html + '</div>';
-      }
-      d.querySelectorAll('script,style,link,base').forEach(function (x) { x.remove(); });
-      if (html === b.innerHTML) html = b.innerHTML;
-      parent.postMessage({ snap: id, css: s, body: html }, '*');
-    }
-    setTimeout(walk, 500);
-  });
-}
 function snapshot(src) {
   return new Promise(res => {
     const f = document.createElement('iframe'), id = uid(); let done = false;
@@ -453,8 +416,8 @@ function snapshot(src) {
     const fin = v => { if (done) return; done = true; removeEventListener('message', on); f.remove(); res(v); };
     const on = e => { if (e.source === f.contentWindow && e.data && e.data.snap === id) fin(e.data); };
     addEventListener('message', on);
-    const sc = '<script>(' + snapPage.toString() + ')(' + JSON.stringify(id) + ')<\/script>';
-    f.srcdoc = codeDoc(src, sc); document.body.appendChild(f); setTimeout(() => fin(null), 15000);
+    const sc = `<script>addEventListener('load',function(){setTimeout(function(){var s=[].map.call(document.querySelectorAll('style'),function(x){return x.textContent}).join('\\n');document.querySelectorAll('script,style,link,base').forEach(function(x){x.remove()});parent.postMessage({snap:'${id}',css:s,body:document.body.innerHTML},'*')},800)})<\/script>`;
+    f.srcdoc = codeDoc(src, sc); document.body.appendChild(f); setTimeout(() => fin(null), 7000);
   });
 }
 function pick(f) { deselect(); selFig = f; f.classList.add('sel'); $('#imgBar').hidden = false; }
@@ -517,7 +480,9 @@ figure{display:block;margin:1.2em auto;text-align:center;page-break-inside:avoid
 figure.fig-left{margin-left:0;margin-right:auto}figure.fig-right{margin-left:auto;margin-right:0}
 figure img{width:100%;height:auto;display:block}
 figcaption{font-size:.85em;color:#555;margin-top:.4em;text-align:center}
-ol.toc{list-style:none;padding:0}ol.toc li{margin:.6em 0}ol.toc a{text-decoration:none;color:inherit}`;
+ol.toc{list-style:none;padding:0}ol.toc li{margin:.6em 0}ol.toc a{text-decoration:none;color:inherit}
+*{box-sizing:border-box}
+section,article,div,header,main{min-height:0!important;height:auto!important;page-break-before:auto!important;page-break-after:auto!important;break-before:auto!important;break-after:auto!important}`;
 const page = (t, b, l, extra = '', css = '') => `<?xml version="1.0" encoding="utf-8"?>\n<!DOCTYPE html>\n<html xmlns="http://www.w3.org/1999/xhtml" ${extra} lang="${l}" xml:lang="${l}"><head><meta charset="utf-8"/><title>${esc(t)}</title><link rel="stylesheet" type="text/css" href="style.css"/>${css ? `<style type="text/css">/*<![CDATA[*/${css.replace(/\]\]>/g, '')}/*]]>*/</style>` : ''}</head><body>${b}</body></html>`;
 const tocLinks = () => `<ol class="toc">${S.chapters.map((c, i) => `<li><a href="ch${i + 1}.xhtml">${esc(c.title || 'অধ্যায় ' + (i + 1))}</a></li>`).join('')}</ol>`;
 
