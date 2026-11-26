@@ -412,6 +412,40 @@ async function inlineRemote(h, fail) {
   }
   return h;
 }
+/* Runs INSIDE the hidden snapshot iframe. Scrolls through the page (to trigger scroll-reveal code),
+   force-shows text hidden by opacity:0 animations, and keeps the chapter's own dark/colored background. */
+function snapPage(id) {
+  addEventListener('load', function () {
+    var d = document, b = d.body, de = d.documentElement, y = 0, step = Math.max(200, innerHeight - 100);
+    function walk() {
+      var h = Math.max(de.scrollHeight, b.scrollHeight);
+      if (y < h && y < 40000) { scrollTo(0, y); y += step; setTimeout(walk, 120); }
+      else { scrollTo(0, 0); setTimeout(finish, 700); }
+    }
+    function solid(c) { return c && c !== 'transparent' && !/,\s*0\)$/.test(c); }
+    function finish() {
+      var s = [].map.call(d.querySelectorAll('style'), function (x) { return x.textContent; }).join('\n');
+      [].forEach.call(b.querySelectorAll('*'), function (el) {
+        if (!(el.textContent || '').trim() && el.tagName !== 'IMG') return;
+        var cs = getComputedStyle(el);
+        if (cs.display === 'none') return;
+        if (parseFloat(cs.opacity) < 0.05) { el.style.setProperty('opacity', '1', 'important'); el.style.setProperty('transform', 'none', 'important'); }
+      });
+      var bc = getComputedStyle(b), hc = getComputedStyle(de);
+      var bg = solid(bc.backgroundColor) ? bc.backgroundColor : (solid(hc.backgroundColor) ? hc.backgroundColor : '');
+      var gr = /gradient\(/.test(bc.backgroundImage) && !/url\(/.test(bc.backgroundImage) ? bc.backgroundImage : '';
+      var html = b.innerHTML;
+      if (bg || gr) {
+        html = '<div style="' + (bg ? 'background-color:' + bg + ';' : '') + (gr ? 'background-image:' + gr + ';' : '') +
+          'color:' + bc.color + ';padding:1em;border-radius:6px">' + html + '</div>';
+      }
+      d.querySelectorAll('script,style,link,base').forEach(function (x) { x.remove(); });
+      if (html === b.innerHTML) html = b.innerHTML;
+      parent.postMessage({ snap: id, css: s, body: html }, '*');
+    }
+    setTimeout(walk, 500);
+  });
+}
 function snapshot(src) {
   return new Promise(res => {
     const f = document.createElement('iframe'), id = uid(); let done = false;
@@ -419,8 +453,8 @@ function snapshot(src) {
     const fin = v => { if (done) return; done = true; removeEventListener('message', on); f.remove(); res(v); };
     const on = e => { if (e.source === f.contentWindow && e.data && e.data.snap === id) fin(e.data); };
     addEventListener('message', on);
-    const sc = `<script>addEventListener('load',function(){setTimeout(function(){var s=[].map.call(document.querySelectorAll('style'),function(x){return x.textContent}).join('\\n');document.querySelectorAll('script,style,link,base').forEach(function(x){x.remove()});parent.postMessage({snap:'${id}',css:s,body:document.body.innerHTML},'*')},800)})<\/script>`;
-    f.srcdoc = codeDoc(src, sc); document.body.appendChild(f); setTimeout(() => fin(null), 7000);
+    const sc = '<script>(' + snapPage.toString() + ')(' + JSON.stringify(id) + ')<\/script>';
+    f.srcdoc = codeDoc(src, sc); document.body.appendChild(f); setTimeout(() => fin(null), 15000);
   });
 }
 function pick(f) { deselect(); selFig = f; f.classList.add('sel'); $('#imgBar').hidden = false; }
