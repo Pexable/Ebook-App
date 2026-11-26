@@ -7,7 +7,7 @@ const withAssets = h => String(h).replace(/asset:([\w.\-]+)/g, (m, n) => (S && S
 const looksLikeCode = s => /<(style|script)\b|<!doctype|<html[\s>]/i.test(s);
 const CODE_HEAD = '<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><base target="_blank"><style>html{background:transparent;color:#1d2733}body{font-family:"Noto Serif Bengali","Kalpurush","SolaimanLipi",serif;line-height:1.8;margin:0;padding:6px 10px}img{max-width:100%;height:auto}</style><script>addEventListener("message",function(e){var d=e.data;if(d&&d.t==="th"){var h=document.documentElement;h.style.setProperty("color",d.fg,"important");h.style.background="transparent";if(document.body)document.body.style.color=d.fg}})</script>';
 /* ---------- embeds (YouTube / Vimeo) ---------- */
-const EMBED_RE = /<iframe\b[^>]*\bsrc\s*=\s*["']?\s*(?:https?:)?\/\/(?:www\.|m\.)?(?:youtube(?:-nocookie)?\.com|youtu\.be|player\.vimeo\.com)/i;
+const EMBED_RE = /<iframe\b|createElement\(\s*["']iframe["']\s*\)|youtube(?:-nocookie)?\.com\/embed|youtu\.be\/|player\.vimeo\.com/i;
 const EMBED_ALLOW = 'accelerometer; autoplay; clipboard-write; encrypted-media; fullscreen; gyroscope; picture-in-picture; web-share';
 const hasEmbed = s => EMBED_RE.test(String(s));
 function fixEmbeds(h) {
