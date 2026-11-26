@@ -6,8 +6,27 @@ const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>
 const withAssets = h => String(h).replace(/asset:([\w.\-]+)/g, (m, n) => (S && S.assets && S.assets[n]) || m);
 const looksLikeCode = s => /<(style|script)\b|<!doctype|<html[\s>]/i.test(s);
 const CODE_HEAD = '<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><base target="_blank"><style>html{background:transparent;color:#1d2733}body{font-family:"Noto Serif Bengali","Kalpurush","SolaimanLipi",serif;line-height:1.8;margin:0;padding:6px 10px}img{max-width:100%;height:auto}</style><script>addEventListener("message",function(e){var d=e.data;if(d&&d.t==="th"){var h=document.documentElement;h.style.setProperty("color",d.fg,"important");h.style.background="transparent";if(document.body)document.body.style.color=d.fg}})</script>';
-const codeDoc = (src, extra = '') => '<!DOCTYPE html><html><head>' + CODE_HEAD + '</head><body>' + withAssets(src) + extra + '</body></html>';
-const codeFrame = src => '<iframe class="codeFrame" sandbox="allow-scripts allow-popups" srcdoc="' + esc(codeDoc(src)) + '"></iframe>';
+/* ---------- embeds (YouTube / Vimeo) ---------- */
+const EMBED_RE = /<iframe\b[^>]*\bsrc\s*=\s*["']?\s*(?:https?:)?\/\/(?:www\.|m\.)?(?:youtube(?:-nocookie)?\.com|youtu\.be|player\.vimeo\.com)/i;
+const EMBED_ALLOW = 'accelerometer; autoplay; clipboard-write; encrypted-media; fullscreen; gyroscope; picture-in-picture; web-share';
+const hasEmbed = s => EMBED_RE.test(String(s));
+function fixEmbeds(h) {
+  return String(h).replace(/<iframe\b([^>]*)>/gi, (m, a) => {
+    a = a.replace(/\bsrc\s*=\s*(["'])(.*?)\1/i, (x, q, u) => {
+      u = u.replace(/&amp;/g, '&').trim();
+      if (u.startsWith('//')) u = 'https:' + u;
+      const id = (u.match(/youtube(?:-nocookie)?\.com\/watch\?(?:[^"']*&)?v=([\w-]{11})/i) ||
+                  u.match(/youtu\.be\/([\w-]{11})/i) ||
+                  u.match(/youtube(?:-nocookie)?\.com\/(?:shorts|live)\/([\w-]{11})/i) || [])[1];
+      if (id) u = 'https://www.youtube.com/embed/' + id;
+      return 'src=' + q + u.replace(/&/g, '&amp;') + q;
+    });
+    a = a.replace(/\s(?:referrerpolicy|allowfullscreen|allow|loading)(?=[\s=>\/]|$)(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+))?/gi, '');
+    return '<iframe' + a + ' referrerpolicy="strict-origin-when-cross-origin" allow="' + EMBED_ALLOW + '" allowfullscreen>';
+  });
+}
+const codeDoc = (src, extra = '') => '<!DOCTYPE html><html><head>' + CODE_HEAD + '</head><body>' + withAssets(fixEmbeds(src)) + extra + '</body></html>';
+const codeFrame = src => '<iframe class="codeFrame" sandbox="allow-scripts allow-popups allow-presentation' + (hasEmbed(src) ? ' allow-same-origin' : '') + '" allow="' + EMBED_ALLOW + '" allowfullscreen srcdoc="' + esc(codeDoc(src)) + '"></iframe>';
 const fresh = () => ({
   meta: { title:'', author:'', lang:'bn', desc:'' },
   cover: null,
@@ -326,7 +345,12 @@ $('#btnImg').onclick = () => { if (S.cur === -1 && S.toc.auto) return toast('ছ
 $('#fileImg').onchange = async e => { for (const f of e.target.files) await addImage(f); e.target.value = ''; };
 /* ---------- code mode: live preview, image assets, file upload ---------- */
 let liveT;
-function liveRender() { codeLive.srcdoc = codeDoc(codeBox.value); }
+function liveRender() {
+  const sb = 'allow-scripts allow-popups allow-presentation' + (hasEmbed(codeBox.value) ? ' allow-same-origin' : '');
+  if (codeLive.getAttribute('sandbox') !== sb) codeLive.setAttribute('sandbox', sb);
+  codeLive.setAttribute('allow', EMBED_ALLOW);
+  codeLive.srcdoc = codeDoc(codeBox.value);
+}
 function toCode(html) { const c = S.chapters[S.cur]; c.mode = 'code'; c.html = html; srcOn = false; renderPane(); renderList(); stat(); save(); toast('কোড মোড চালু হয়েছে'); }
 function insertAt(ta, t) { const s = ta.selectionStart, e = ta.selectionEnd; ta.setRangeText(t, s, e, 'end'); ta.focus(); commit(); queueSave(); stat(); clearTimeout(liveT); liveT = setTimeout(liveRender, 300); }
 function renderAssets() {
