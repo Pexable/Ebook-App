@@ -5,7 +5,7 @@ const uid = () => Math.random().toString(36).slice(2, 9);
 const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 const withAssets = h => String(h).replace(/asset:([\w.\-]+)/g, (m, n) => (S && S.assets && S.assets[n]) || m);
 const looksLikeCode = s => /<(style|script)\b|<!doctype|<html[\s>]/i.test(s);
-const CODE_HEAD = '<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><base target="_blank"><style>html{background:#fff;color:#1d2733}body{font-family:"Noto Serif Bengali","Kalpurush","SolaimanLipi",serif;line-height:1.8;margin:12px}img{max-width:100%;height:auto}</style>';
+const CODE_HEAD = '<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><base target="_blank"><style>html{background:transparent;color:#1d2733}body{font-family:"Noto Serif Bengali","Kalpurush","SolaimanLipi",serif;line-height:1.8;margin:0;padding:6px 10px}img{max-width:100%;height:auto}</style><script>addEventListener("message",function(e){var d=e.data;if(d&&d.t==="th"){var h=document.documentElement;h.style.setProperty("color",d.fg,"important");h.style.background="transparent";if(document.body)document.body.style.color=d.fg}})</script>';
 const codeDoc = (src, extra = '') => '<!DOCTYPE html><html><head>' + CODE_HEAD + '</head><body>' + withAssets(src) + extra + '</body></html>';
 const codeFrame = src => '<iframe class="codeFrame" sandbox="allow-scripts allow-popups" srcdoc="' + esc(codeDoc(src)) + '"></iframe>';
 const fresh = () => ({

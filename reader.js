@@ -127,7 +127,9 @@ const BASE_CSS = `
   ol.toc { list-style: none; padding: 0; }
   ol.toc li { margin: 0.65em 0; border-bottom: 1px dashed rgba(128,128,128,0.25); padding-bottom: 4px; }
   ol.toc a { text-decoration: none; color: inherit; font-weight: 500; }
-  .codeFrame { display: block; width: 100% !important; max-width: 100% !important; max-height: none !important; height: calc(100vh - 56px) !important; border: 0; background: #fff; }
+  .codeFrame { display: block; width: 100% !important; max-width: 100% !important; max-height: none !important; height: 100% !important; margin: 0 !important; padding: 0 !important; border: 0 !important; background: transparent !important; }
+  html.is-code, html.is-code body { height: 100% !important; width: 100% !important; overflow: hidden !important; padding: 0 !important; margin: 0 !important; }
+  html.is-code #rPageWrap { width: 100% !important; max-width: none !important; height: 100% !important; margin: 0 !important; padding: 0 !important; transform: none !important; }
 
   /* Markable blocks & visual markers */
   [data-bm-block] {
@@ -204,7 +206,19 @@ async function cssText(path) {
 }
 const userCss = () => `html{font-size:${R.fs}%!important}body,#rPageWrap{line-height:${R.lh}!important}${THEMES[R.theme]}`;
 
+const THEME_FG = ['#1c222b', '#3b2f1e', '#d8dde6'];
+function pushThemeToCodeFrames() {
+  try {
+    const idoc = $('#rFrame').contentDocument; if (!idoc) return;
+    idoc.querySelectorAll('.codeFrame').forEach(f => {
+      const send = () => { try { f.contentWindow.postMessage({ t: 'th', fg: THEME_FG[R.theme] }, '*'); } catch (e) { } };
+      if (!f._thBound) { f._thBound = true; f.addEventListener('load', send); }
+      send();
+    });
+  } catch (e) { }
+}
 function syncThemeSurface() {
+  setTimeout(pushThemeToCodeFrames, 0);
   const bg = R.mode === 'pdf' ? '#525659' : THEME_BG[R.theme];
   $('#rBody').style.background = bg;
   $('#rFrame').style.background = THEME_BG[R.theme];
@@ -400,6 +414,17 @@ function applyPaginationLayout(opts = {}) {
   const htmlEl = idoc.documentElement;
   const wrap = idoc.getElementById('rPageWrap');
   if (!wrap) return;
+
+  if (wrap.querySelector('.codeFrame')) {
+    htmlEl.classList.remove('is-paged');
+    htmlEl.classList.add('is-code');
+    wrap.style.width = ''; wrap.style.height = ''; wrap.style.columnWidth = ''; wrap.style.columnGap = ''; wrap.style.transform = '';
+    R.subPage = 0; R.subTotal = 1;
+    pushThemeToCodeFrames();
+    updatePosAndProgress();
+    return;
+  }
+  htmlEl.classList.remove('is-code');
 
   if (R.readMode !== 'paged') {
     htmlEl.classList.remove('is-paged');
