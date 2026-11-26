@@ -46,11 +46,46 @@ const MIME = {
 
 const THEME_BG = ['#ffffff', '#f4ecd8', '#14181f'];
 
+const GRAIN = c => `url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 ${c[0]}  0 0 0 0 ${c[1]}  0 0 0 0 ${c[2]}  0 0 0 ${c[3]} 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>")`;
 const THEMES = [
-  'html,body,#rPageWrap{background:#ffffff!important;color:#1c222b!important}',
-  'html,body,#rPageWrap{background:#f4ecd8!important;color:#3b2f1e!important}',
-  'html,body,#rPageWrap{background:#14181f!important;color:#d8dde6!important}a{color:#8ab4f8!important}table,th,td{border-color:#444!important}'
+  `html{background-color:#fbf8f1!important;background-image:${GRAIN(['.45','.38','.28','.10'])}!important;color:#1c222b!important}body,#rPageWrap{background:transparent!important;color:#1c222b!important}`,
+  `html{background-color:#f4ecd8!important;background-image:${GRAIN(['.45','.32','.15','.13'])}!important;color:#3b2f1e!important}body,#rPageWrap{background:transparent!important;color:#3b2f1e!important}`,
+  `html{background-color:#14181f!important;background-image:${GRAIN(['.9','.9','1','.05'])}!important;color:#d8dde6!important}body,#rPageWrap{background:transparent!important;color:#d8dde6!important}a{color:#8ab4f8!important}table,th,td{border-color:#444!important}`
 ];
+
+/* ---------- Paper effects (shadows, page fold, sweep, ink-like text) ---------- */
+function paperCss() {
+  const dark = R.theme === 2, sepia = R.theme === 1;
+  const sh = dark ? '0,0,0' : (sepia ? '90,60,20' : '60,50,40');
+  const a = dark ? 0.35 : 0.16;
+  return `
+  ::selection { background: rgba(60,160,200,0.38); }
+  html::before {
+    content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 2147483000;
+    background:
+      linear-gradient(to right, rgba(${sh},${a}) 0, rgba(${sh},0) 7%, rgba(${sh},0) 93%, rgba(${sh},${a * 0.75}) 100%),
+      linear-gradient(to bottom, rgba(${sh},${a * 0.6}) 0, rgba(${sh},0) 4%, rgba(${sh},0) 96%, rgba(${sh},${a * 0.8}) 100%);
+  }
+  html::after {
+    content: ""; position: fixed; right: 0; bottom: 0; width: 34px; height: 34px; pointer-events: none; z-index: 2147483001;
+    background: linear-gradient(135deg, rgba(0,0,0,0) 50%, rgba(${sh},${a * 1.6}) 51%, ${dark ? '#2a303a' : (sepia ? '#e6d9b8' : '#ece6d8')} 100%);
+    border-top-left-radius: 6px; box-shadow: -2px -2px 5px rgba(${sh},${a});
+  }
+  html.turning body { animation: paperSweep 0.38s ease-out; }
+  @keyframes paperSweep {
+    0% { filter: brightness(${dark ? 1.12 : 0.93}); opacity: .82; }
+    100% { filter: none; opacity: 1; }
+  }
+  h1 { padding-bottom: .25em; border-bottom: 3px double rgba(${sh},.35); }
+  h2, h3 { text-shadow: 0 1px 0 rgba(255,255,255,${dark ? 0 : .35}); }
+  hr { border: 0; height: 1px; background: linear-gradient(to right, transparent, rgba(${sh},.5), transparent); margin: 1.6em 0; }
+  h1 + p::first-letter { float: left; font-size: 2.7em; line-height: .9; padding: .05em .12em 0 0; font-weight: 700; }
+  p, li { text-shadow: 0 0 .5px rgba(${sh},.25); }
+  blockquote { border-left: 3px solid rgba(${sh},.4); margin-left: 0; padding: .2em 1em; background: rgba(${sh},.06); border-radius: 0 6px 6px 0; }
+  table { box-shadow: 0 2px 6px rgba(${sh},.2); }
+  img, figure { box-shadow: 0 3px 10px rgba(${sh},.3); border-radius: 3px; }
+  `;
+}
 
 const BASE_CSS = `
   *, *::before, *::after {
@@ -204,7 +239,7 @@ async function cssText(path) {
   }
   R.css.set(path, css); return css;
 }
-const userCss = () => `html{font-size:${R.fs}%!important}body,#rPageWrap{line-height:${R.lh}!important}${THEMES[R.theme]}`;
+const userCss = () => `html{font-size:${R.fs}%!important}body,#rPageWrap{line-height:${R.lh}!important}${THEMES[R.theme]}${paperCss()}`;
 
 const THEME_FG = ['#1c222b', '#3b2f1e', '#d8dde6'];
 function pushThemeToCodeFrames() {
@@ -491,6 +526,7 @@ function goSubPage(p, animate = true) {
   R.subPage = Math.min(Math.max(0, p), R.subTotal - 1);
   if (wrap && R.readMode === 'paged') {
     wrap.style.transition = animate ? 'transform 0.22s cubic-bezier(0.22, 1, 0.36, 1)' : 'none';
+    if (animate) { const he = idoc.documentElement; he.classList.add('turning'); setTimeout(() => he.classList.remove('turning'), 400); }
     const offset = R.subPage * (R.pageW + R.pageGap);
     wrap.style.transform = `translateX(-${offset}px)`;
   }
