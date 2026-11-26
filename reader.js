@@ -12,9 +12,9 @@ const R = {
   spine: [],
   toc: [],
   sections: [],
-  i: 0,          // current chapter / section index
-  subPage: 0,    // current sub-page inside current chapter (0-indexed)
-  subTotal: 1,   // total sub-pages inside current chapter
+  i: 0,
+  subPage: 0,
+  subTotal: 1,
   pageW: 0,
   pageGap: 32,
   tk: 0,
@@ -23,17 +23,15 @@ const R = {
   fs: +localStorage.getItem('rfs') || 100,
   lh: +localStorage.getItem('rlh') || 1.85,
   theme: +localStorage.getItem('rth') || 0,
-  // Preview range & unlock state
   limitOn: false,
-  limitType: 'chapters', // 'chapters' | 'percent'
+  limitType: 'chapters',
   limitVal: 2,
   buyUrl: '',
   ctaText: 'সম্পূর্ণ বইটি পড়তে আনলক করুন বা কিনুন',
   unlocked: false,
-  // Bookmarks (pages & saved lines) + Last-read line marker
   bookmarks: [],
-  lastRead: null, // { idx, subPage, blockIdx, snippet, label }
-  selectedBlock: null // { blockIdx, snippet, el }
+  lastRead: null,
+  selectedBlock: null
 };
 
 const P = { pdf: null, zoom: 1, vp: null, divs: [], io: null, cur: 1, raf: 0, w: 0 };
@@ -53,7 +51,6 @@ const THEMES = [
   `html{background-color:#14181f!important;background-image:${GRAIN(['.9','.9','1','.05'])}!important;color:#d8dde6!important}body,#rPageWrap{background:transparent!important;color:#d8dde6!important}a{color:#8ab4f8!important}table,th,td{border-color:#444!important}`
 ];
 
-/* ---------- Paper effects (shadows, page fold, sweep, ink-like text) ---------- */
 function paperCss() {
   const dark = R.theme === 2, sepia = R.theme === 1;
   const sh = dark ? '0,0,0' : (sepia ? '90,60,20' : '60,50,40');
@@ -79,7 +76,8 @@ function paperCss() {
   h1 { padding-bottom: .25em; border-bottom: 3px double rgba(${sh},.35); }
   h2, h3 { text-shadow: 0 1px 0 rgba(255,255,255,${dark ? 0 : .35}); }
   hr { border: 0; height: 1px; background: linear-gradient(to right, transparent, rgba(${sh},.5), transparent); margin: 1.6em 0; }
-  h1 + p::first-letter { float: left; font-size: 2.7em; line-height: .9; padding: .05em .12em 0 0; font-weight: 700; }
+  html:not(.is-paged) h1 + p::first-letter { float: left; font-size: 2.7em; line-height: .9; padding: .05em .12em 0 0; font-weight: 700; }
+  html.is-paged h1 + p::first-letter { font-size: 1.45em; font-weight: 700; }
   p, li { text-shadow: 0 0 .5px rgba(${sh},.25); }
   blockquote { border-left: 3px solid rgba(${sh},.4); margin-left: 0; padding: .2em 1em; background: rgba(${sh},.06); border-radius: 0 6px 6px 0; }
   table { box-shadow: 0 2px 6px rgba(${sh},.2); }
@@ -134,6 +132,10 @@ const BASE_CSS = `
   html.is-paged #rPageWrap > * {
     max-width: 100% !important;
   }
+  html.is-paged #rPageWrap * {
+    position: static !important;
+    float: none !important;
+  }
   html.is-paged div,
   html.is-paged section,
   html.is-paged article,
@@ -151,7 +153,7 @@ const BASE_CSS = `
   th, td { border: 1px solid #bbb; padding: 6px 8px; text-align: left; overflow-wrap: anywhere; }
   img, svg, video, figure {
     max-width: 100% !important;
-    max-height: 72vh !important;
+    max-height: 68vh !important;
     width: auto !important;
     height: auto !important;
     object-fit: contain;
@@ -166,7 +168,6 @@ const BASE_CSS = `
   html.is-code, html.is-code body { height: 100% !important; width: 100% !important; overflow: hidden !important; padding: 0 !important; margin: 0 !important; }
   html.is-code #rPageWrap { width: 100% !important; max-width: none !important; height: 100% !important; margin: 0 !important; padding: 0 !important; transform: none !important; }
 
-  /* Markable blocks & visual markers */
   [data-bm-block] {
     border-radius: 4px;
     transition: background-color 0.18s ease, box-shadow 0.18s ease;
@@ -185,7 +186,6 @@ const BASE_CSS = `
   [data-bm-block].r-block-lastread {
     background: rgba(255, 152, 0, 0.20) !important;
     border-bottom: 2px dashed #ef6c00 !important;
-    position: relative;
   }
   [data-bm-block].r-block-lastread::after {
     content: "📍 এ পর্যন্ত পঠিত";
@@ -201,7 +201,6 @@ const BASE_CSS = `
   }
 `;
 
-/* ---------- Helpers ---------- */
 function loadScript(src) {
   return new Promise((res, rej) => {
     const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = () => rej(new Error(src)); document.head.appendChild(s);
@@ -259,10 +258,8 @@ function syncThemeSurface() {
   $('#rFrame').style.background = THEME_BG[R.theme];
 }
 
-/* ---------- Content Protection ---------- */
 function attachContentProtection(doc) {
   if (!doc) return;
-  // Allow full text selection, long-press handles, context menu, and copy/cut/paste
   doc.documentElement.style.webkitUserSelect = 'text';
   doc.documentElement.style.userSelect = 'text';
   doc.body.style.webkitUserSelect = 'text';
@@ -270,7 +267,6 @@ function attachContentProtection(doc) {
 }
 attachContentProtection(document);
 
-/* ---------- Preview Range Calculation ---------- */
 function getTotalUnits() {
   if (R.mode === 'pdf') return P.pdf ? P.pdf.numPages : 1;
   if (R.mode === 'epub') return R.spine.length || 1;
@@ -314,7 +310,6 @@ function hidePaywall() {
   $('#rPaywall').hidden = true;
 }
 
-/* ---------- Bookmarks & Last-Read Line Marker Persistence ---------- */
 function loadBookmarks() {
   try { R.bookmarks = JSON.parse(localStorage.getItem('rbm:' + R.key) || '[]'); } catch (e) { R.bookmarks = []; }
   try { R.lastRead = JSON.parse(localStorage.getItem('rlr:' + R.key) || 'null'); } catch (e) { R.lastRead = null; }
@@ -368,7 +363,6 @@ function updateBookmarkUI() {
   btn.classList.toggle('active-bm', exists);
   $('#bmCount').textContent = R.bookmarks.length + (R.lastRead ? 1 : 0);
 
-  // Render Last-Read Card in Drawer
   const lrCard = $('#rLastReadCard');
   if (R.lastRead) {
     lrCard.hidden = false;
@@ -395,7 +389,6 @@ function updateBookmarkUI() {
     lrCard.innerHTML = '';
   }
 
-  // Render Saved Pages & Lines List
   const list = $('#rBmList');
   list.innerHTML = '';
   if (!R.bookmarks.length && !R.lastRead) {
@@ -442,7 +435,7 @@ function jumpToLocation(loc) {
   else renderProjectSection(loc.idx, opts);
 }
 
-/* ---------- Pagination Engine (True Page-by-Page Reading) ---------- */
+/* ---------- Pagination Engine (Fixed Blank Page Calculation) ---------- */
 function applyPaginationLayout(opts = {}) {
   const idoc = $('#rFrame').contentDocument;
   if (!idoc || !idoc.body) return;
@@ -482,10 +475,10 @@ function applyPaginationLayout(opts = {}) {
   const frameEl = $('#rFrame');
   const outerW = Math.max(240, frameEl.clientWidth || window.innerWidth);
   const outerH = Math.max(240, frameEl.clientHeight || (window.innerHeight - 100));
-  // body has `padding: 0 16px` in paged mode, so exact inner column width is outerW - 32
   const sidePad = 16;
   const colW = Math.max(200, outerW - sidePad * 2);
   const gap = 32;
+  const stride = colW + gap;
 
   R.pageW = colW;
   R.pageGap = gap;
@@ -495,26 +488,43 @@ function applyPaginationLayout(opts = {}) {
   wrap.style.columnGap = gap + 'px';
   wrap.style.transform = 'translateX(0px)';
 
-  // Force synchronous reflow so scrollWidth reflects exact column count
-  const sw = wrap.scrollWidth;
-  const stride = colW + gap;
-  const totalPages = Math.max(1, Math.ceil((sw - 2) / stride));
-  R.subTotal = totalPages;
+  void wrap.offsetWidth;
+
+  // Accurate column count without trailing empty column caused by gap
+  const sw = Math.max(colW, wrap.scrollWidth);
+  const rawCols = Math.max(1, Math.round((sw + gap) / stride));
+  let totalPages = rawCols;
+
+  // Verify last column actually contains content; drop trailing blank column if present
+  if (totalPages > 1) {
+    const lastColStart = (totalPages - 1) * stride;
+    const hasContentInLast = [...wrap.querySelectorAll('p, h1, h2, h3, li, blockquote, img, table, figure, pre, div')].some(el => {
+      const rect = el.getBoundingClientRect();
+      const wrapRect = wrap.getBoundingClientRect();
+      const relLeft = rect.left - wrapRect.left;
+      const relRight = rect.right - wrapRect.left;
+      return relRight > lastColStart + 4 && relLeft < totalPages * stride && rect.height > 2;
+    });
+    if (!hasContentInLast) totalPages -= 1;
+  }
+
+  R.subTotal = Math.max(1, totalPages);
 
   let targetPage = 0;
   if (opts.lastPage) {
-    targetPage = totalPages - 1;
+    targetPage = R.subTotal - 1;
   } else if (typeof opts.blockIdx === 'number') {
     const targetEl = wrap.querySelector(`[data-bm-block="${opts.blockIdx}"]`);
     if (targetEl) {
-      targetPage = Math.floor((targetEl.offsetLeft + 2) / stride);
+      const relLeft = targetEl.getBoundingClientRect().left - wrap.getBoundingClientRect().left;
+      targetPage = Math.max(0, Math.min(R.subTotal - 1, Math.floor((relLeft + 4) / stride)));
     } else if (typeof opts.subPage === 'number') {
       targetPage = opts.subPage;
     }
   } else if (typeof opts.subPage === 'number') {
     targetPage = opts.subPage;
   } else if (opts.keepCurrent) {
-    targetPage = Math.min(R.subPage, totalPages - 1);
+    targetPage = Math.min(R.subPage, R.subTotal - 1);
   }
 
   goSubPage(targetPage, false);
@@ -565,7 +575,6 @@ function updatePosAndProgress() {
   updateBookmarkUI();
 }
 
-/* ---------- Line / Paragraph Marking Inside Iframe ---------- */
 function hideLineActionBar() {
   $('#rLineActionBar').hidden = true;
   R.selectedBlock = null;
@@ -590,13 +599,11 @@ function refreshIframeMarkers() {
     el.classList.remove('r-block-saved', 'r-block-lastread');
   });
 
-  // Highlight last-read line if in current section
   if (R.lastRead && R.lastRead.idx === R.i && typeof R.lastRead.blockIdx === 'number') {
     const el = idoc.querySelector(`[data-bm-block="${R.lastRead.blockIdx}"]`);
     if (el) el.classList.add('r-block-lastread');
   }
 
-  // Highlight any saved line bookmarks in current section
   R.bookmarks.forEach(bm => {
     if (bm.type === 'line' && bm.idx === R.i && typeof bm.blockIdx === 'number') {
       const el = idoc.querySelector(`[data-bm-block="${bm.blockIdx}"]`);
@@ -678,7 +685,6 @@ $('#btnClearLineMark').onclick = () => {
 
 $('#btnCloseLineBar').onclick = hideLineActionBar;
 
-/* ---------- Reader Shell ---------- */
 function setMode(m) {
   R.mode = m;
   const isPdf = m === 'pdf';
@@ -748,7 +754,7 @@ function bindIframeInteractions(idoc) {
     const dur = Date.now() - st;
     const selText = (idoc.getSelection && idoc.getSelection().toString().trim()) || '';
     if (selText.length > 0 || dur > 420 || wasLongPress) {
-      return; // User is selecting text via long-press
+      return;
     }
     if (Math.abs(dx) > 65 && Math.abs(dy) < 60) {
       if (dx < 0) next(); else prev();
@@ -758,7 +764,7 @@ function bindIframeInteractions(idoc) {
   idoc.addEventListener('click', e => {
     if (e.target.closest && e.target.closest('a[href]')) return;
     const selText = (idoc.getSelection && idoc.getSelection().toString().trim()) || '';
-    if (selText.length > 0) return; // Keep text selection intact
+    if (selText.length > 0) return;
 
     const block = e.target.closest && e.target.closest('[data-bm-block]');
     if (block) {
@@ -776,7 +782,6 @@ function bindIframeInteractions(idoc) {
   });
 }
 
-/* ---------- Open Project Preview (from Ebook Maker) ---------- */
 window.openProjectPreview = function ({ title, lang, sections, previewConfig }) {
   closeReader();
   $('#reader').hidden = false;
@@ -886,7 +891,6 @@ function renderProjectSection(idx, opts = {}) {
   const wrap = idoc.getElementById('rPageWrap');
   wrap.innerHTML = sec.html;
 
-  // Internal TOC link navigation inside iframe
   wrap.querySelectorAll('a[data-goto-ch]').forEach(a => {
     a.onclick = e => {
       e.preventDefault();
@@ -910,7 +914,6 @@ function renderProjectSection(idx, opts = {}) {
   requestAnimationFrame(() => applyPaginationLayout(opts));
 }
 
-/* ---------- Open External File (EPUB / PDF / HTML / TXT) ---------- */
 async function openBook(file) {
   const ext = file.name.split('.').pop().toLowerCase();
   if (!['epub', 'pdf', 'txt', 'html', 'htm'].includes(ext)) return note('শুধু .epub, .pdf, .html বা .txt ফাইল খোলা যাবে');
@@ -1105,7 +1108,8 @@ async function renderEpubChapter(i, hash, opts = {}) {
     const el = id && idoc.getElementById(id);
     if (!el) return;
     if (R.readMode === 'paged') {
-      const targetPage = Math.floor((el.offsetLeft + 4) / (R.pageW + R.pageGap));
+      const relLeft = el.getBoundingClientRect().left - wrap.getBoundingClientRect().left;
+      const targetPage = Math.max(0, Math.min(R.subTotal - 1, Math.floor((relLeft + 4) / (R.pageW + R.pageGap))));
       goSubPage(targetPage, false);
     } else {
       el.scrollIntoView();
@@ -1315,7 +1319,6 @@ window.addEventListener('resize', () => {
   }, 220);
 });
 
-/* ---------- Controls & Page-by-Page Navigation ---------- */
 function next() {
   if (R.mode === 'pdf') {
     if (P.cur < P.pdf.numPages) goPdf(P.cur + 1);
@@ -1360,7 +1363,6 @@ $('#rJumpLastBtn').onclick = () => {
   if (R.lastRead) jumpToLocation(R.lastRead);
 };
 
-// Settings popover toggle
 $('#rSettingsBtn').onclick = e => {
   e.stopPropagation();
   $('#rDrawer').hidden = true;
@@ -1368,7 +1370,6 @@ $('#rSettingsBtn').onclick = e => {
   syncSettingsUI();
 };
 
-// Drawer (TOC & Bookmarks)
 $('#rToc').onclick = e => {
   e.stopPropagation();
   $('#rSettingsPanel').hidden = true;
@@ -1384,7 +1385,6 @@ $('#tabBookmarks').onclick = () => {
   updateBookmarkUI();
 };
 
-// Page Bookmark toggle
 $('#rBookmarkBtn').onclick = () => {
   const idx = currentUnitIndex();
   const sp = currentSubPage();
@@ -1399,7 +1399,6 @@ $('#rBookmarkBtn').onclick = () => {
   saveBookmarks();
 };
 
-// Read Mode (Paged vs Scroll), Font size, Line spacing, Themes & Quick limit
 $$('.rmode-btn').forEach(b => b.onclick = () => {
   R.readMode = b.dataset.rmode;
   try { localStorage.setItem('rrmode', R.readMode); } catch (e) { }
@@ -1442,7 +1441,6 @@ $('#rQuickLimit').onchange = e => {
   else { renderProjectToc(); renderProjectSection(Math.min(R.i, getAllowedMaxIndex())); }
 };
 
-// Paywall / Unlock actions
 $('#rUnlockBtn').onclick = () => {
   if (R.buyUrl) {
     window.open(R.buyUrl, '_blank', 'noopener');
@@ -1481,7 +1479,6 @@ document.addEventListener('keydown', e => {
   else if (e.key === 'ArrowLeft') prev();
 });
 
-/* ---------- Android: "Open with" / file-manager / WhatsApp support ---------- */
 const cap = window.Capacitor, AppPlugin = cap && cap.Plugins && cap.Plugins.App;
 let lastUri = '', lastAt = 0;
 function b64ToBytes(b64) { const bin = atob(b64), u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); return u; }
