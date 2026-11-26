@@ -1,5 +1,9 @@
 {
   "appId": "com.example.ebookmaker",
   "appName": "Ebook Maker",
-  "webDir": "www"
+  "webDir": "www",
+  "server": {
+    "androidScheme": "https",
+    "hostname": "ebookmaker.example.com"
+  }
 }
