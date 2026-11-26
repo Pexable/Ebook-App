@@ -127,6 +127,7 @@ const BASE_CSS = `
   ol.toc { list-style: none; padding: 0; }
   ol.toc li { margin: 0.65em 0; border-bottom: 1px dashed rgba(128,128,128,0.25); padding-bottom: 4px; }
   ol.toc a { text-decoration: none; color: inherit; font-weight: 500; }
+  .codeFrame { display: block; width: 100% !important; max-width: 100% !important; max-height: none !important; height: calc(100vh - 56px) !important; border: 0; background: #fff; }
 
   /* Markable blocks & visual markers */
   [data-bm-block] {

@@ -155,3 +155,12 @@ Released under the [MIT License](LICENSE). Add a `LICENSE` file to the repositor
 
 - [JSZip](https://stuk.github.io/jszip/) for ZIP packaging
 - [Hind Siliguri](https://fonts.google.com/specimen/Hind+Siliguri) and [Noto Serif Bengali](https://fonts.google.com/noto/specimen/Noto+Serif+Bengali) via Google Fonts
+
+## কোড মোড (HTML + CSS + JavaScript)
+
+- অধ্যায়ের উপরে **কোড (HTML/CSS/JS)** বাটনে চাপুন। পূর্ণ HTML, `<style>` ও `<script>` সরাসরি লেখা বা পেস্ট করা যায়; নিচে লাইভ প্রিভিউ দেখা যায়।
+- সাধারণ এডিটরে CSS/JS সহ কোড পেস্ট করলে অ্যাপ নিজেই কোড মোডে নেওয়ার প্রস্তাব দেয়।
+- ছবি: **🖼 ছবি আপলোড** দিলে ছবি `<img src="asset:img1">` আকারে কোডে বসে। তালিকার ছবিতে ট্যাপ করলেও বসে। `https://` লিংকও চলে (EPUB করার সময় ছবি ভেতরে ঢুকিয়ে নেওয়া হয়, ওয়েবসাইট অনুমতি না দিলে বাদ যায়)।
+- **📎 ফাইল আপলোড** বা ড্র্যাগ-ড্রপ: ছবি, `.html` (নতুন কোড অধ্যায়), `.txt/.md` (নতুন টেক্সট অধ্যায়), `.css/.js` (কোডে যোগ), `.json` (প্রজেক্ট খোলা)।
+- রিডারে কোড অধ্যায় একটি নিরাপদ স্যান্ডবক্সে চলে (JavaScript চলে, কিন্তু অ্যাপের ডেটায় হাত দিতে পারে না)।
+- EPUB-এ JavaScript চলে না। এক্সপোর্টের সময় কোড চালিয়ে ফলাফলের স্থির কপি (CSS সহ) EPUB-এ রাখা হয়। ক্লিক/সার্চের মতো ইন্টারঅ্যাকশন শুধু অ্যাপের রিডার ও প্রিভিউতে কাজ করবে।

@@ -3,9 +3,15 @@ const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAl
 const OLD_KEY = 'ebook-maker-v1';
 const uid = () => Math.random().toString(36).slice(2, 9);
 const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+const withAssets = h => String(h).replace(/asset:([\w.\-]+)/g, (m, n) => (S && S.assets && S.assets[n]) || m);
+const looksLikeCode = s => /<(style|script)\b|<!doctype|<html[\s>]/i.test(s);
+const CODE_HEAD = '<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><base target="_blank"><style>html{background:#fff;color:#1d2733}body{font-family:"Noto Serif Bengali","Kalpurush","SolaimanLipi",serif;line-height:1.8;margin:12px}img{max-width:100%;height:auto}</style>';
+const codeDoc = (src, extra = '') => '<!DOCTYPE html><html><head>' + CODE_HEAD + '</head><body>' + withAssets(src) + extra + '</body></html>';
+const codeFrame = src => '<iframe class="codeFrame" sandbox="allow-scripts allow-popups" srcdoc="' + esc(codeDoc(src)) + '"></iframe>';
 const fresh = () => ({
   meta: { title:'', author:'', lang:'bn', desc:'' },
   cover: null,
+  assets: {},
   cur: 0,
   preview: { limitOn: false, limitType: 'chapters', limitVal: 2, buyUrl: '', ctaText: 'সম্পূর্ণ বইটি পড়তে আনলক করুন বা কিনুন' },
   toc: { on:true, title:'সূচিপত্র', auto:true, html:'' },
@@ -25,7 +31,7 @@ const norm = d => {
 };
 
 let S = null, timer, selFig = null, lastRange = null;
-const body = $('#body'), plain = $('#plain'), srcBox = $('#srcBox');
+const body = $('#body'), plain = $('#plain'), srcBox = $('#srcBox'), codeBox = $('#codeBox'), codeLive = $('#codeLive');
 let srcOn = false;
 
 /* ---------- storage (IndexedDB: large enough for images) ---------- */
@@ -63,11 +69,12 @@ const clean = h => h.replace(/ sel(?=")/g, '');
 function commit() {
   if (!S) return;
   if (S.cur === -1) { if (!S.toc.auto) S.toc.html = clean(body.innerHTML); return; }
-  const c = S.chapters[S.cur]; if (c) c.html = c.mode === 'text' ? plain.value : clean(body.innerHTML);
+  const c = S.chapters[S.cur]; if (c) c.html = c.mode === 'text' ? plain.value : c.mode === 'code' ? codeBox.value : clean(body.innerHTML);
 }
 const tocAuto = () => '<ol>' + S.chapters.map((c, i) => `<li>${esc(c.title || 'অধ্যায় ' + (i + 1))}</li>`).join('') + '</ol>';
+const isCode = () => S && S.cur !== -1 && S.chapters[S.cur] && S.chapters[S.cur].mode === 'code';
 const isText = () => S && S.cur !== -1 && S.chapters[S.cur] && S.chapters[S.cur].mode === 'text';
-function words() { const t = (isText() ? plain.value : body.innerText).trim(); return t ? t.split(/\s+/).length : 0; }
+function words() { const t = (isText() ? plain.value : isCode() ? codeBox.value.replace(/<(style|script)[\s\S]*?<\/\1>/gi, ' ').replace(/<[^>]+>/g, ' ') : body.innerText).trim(); return t ? t.split(/\s+/).length : 0; }
 
 /* ---------- HTML sanitiser / text <-> HTML ---------- */
 const SAFE = new Set('B STRONG I EM U S SPAN P BR H1 H2 H3 BLOCKQUOTE UL OL LI DIV A SUB SUP HR TABLE THEAD TBODY TR TH TD'.split(' '));
@@ -86,6 +93,7 @@ function unescapeHtmlEntities(str) {
 }
 
 function sanitize(h, imgs) {
+  h = withAssets(h);
   const d = new DOMParser().parseFromString('<body>' + h + '</body>', 'text/html'), ok = imgs ? SAFE_IMG : SAFE;
   (function walk(n) {
     [...n.childNodes].forEach(c => {
@@ -100,7 +108,7 @@ function sanitize(h, imgs) {
       [...c.attributes].forEach(a => c.removeAttribute(a.name));
       css.forEach(([p, v]) => c.style.setProperty(p, v));
       if (imgs) { if (cls) c.setAttribute('class', cls.replace(/[^\w\- ]/g, '')); if (ce !== null) c.setAttribute('contenteditable', ce); }
-      if (c.tagName === 'IMG') { if (sv && /^data:image\//i.test(sv)) { c.setAttribute('src', sv); c.setAttribute('alt', alt || ''); } else c.remove(); }
+      if (c.tagName === 'IMG') { if (sv && /^(data:image\/|https?:\/\/)/i.test(sv)) { c.setAttribute('src', sv); c.setAttribute('alt', alt || ''); } else c.remove(); }
       if (c.tagName === 'A' && href && /^(https?:|mailto:|#)/i.test(href)) c.setAttribute('href', href);
     });
   })(d.body);
@@ -118,13 +126,13 @@ function htmlToText(h) {
   const out = []; d.body.childNodes.forEach(n => { const t = (n.textContent || '').replace(/\u00a0/g, ' ').trim(); if (t) out.push(t); });
   return out.join('\n\n');
 }
-const ch2html = c => {
-  if (c.mode === 'text') return textToHtml(c.html);
+const ch2html = (c, h = c.html) => {
+  if (c.mode === 'text') return textToHtml(h);
   // Auto-fix if user previously pasted raw HTML tags into visual editor
-  if (looksLikeEscapedHtml(c.html)) {
-    return sanitize(unescapeHtmlEntities(c.html), true);
+  if (looksLikeEscapedHtml(h)) {
+    return sanitize(unescapeHtmlEntities(h), true);
   }
-  return c.html;
+  return withAssets(h);
 };
 const fileName = () => (S.meta.title.trim() || 'ebook').replace(/[\\/:*?"<>|]+/g, '').replace(/\s+/g, '-');
 
@@ -182,7 +190,7 @@ function renderPane() {
     body.innerHTML = S.toc.auto ? tocAuto() : (S.toc.html || '<p><br></p>'); body.contentEditable = S.toc.auto ? 'false' : 'true';
   } else {
     const c = S.chapters[S.cur]; $('#cTitle').value = c.title; body.contentEditable = 'true';
-    if (c.mode === 'text') plain.value = c.html; else body.innerHTML = c.html;
+    if (c.mode === 'text') plain.value = c.html; else if (c.mode === 'code') { codeBox.value = c.html; liveRender(); renderAssets(); } else body.innerHTML = c.html;
   }
   showMode();
 }
@@ -226,6 +234,7 @@ body.addEventListener('paste', e => {
   if (img) return addImage(img);
   const h = cd.getData('text/html');
   const txt = cd.getData('text/plain');
+  if (txt && /<(style|script)\b|<!doctype|<html[\s>]/i.test(txt) && S.cur !== -1 && confirm('এই লেখায় CSS/JavaScript আছে। কোড মোডে নিয়ে পূর্ণ সমর্থন চালু করবেন?')) return toCode(txt);
   if (h && body.contentEditable === 'true') {
     document.execCommand('insertHTML', false, sanitize(h, true));
   } else if (txt && /<(h1|h2|h3|p|div|strong|em|u|span|ul|ol|li|table|blockquote)\b/i.test(txt) && body.contentEditable === 'true') {
@@ -244,32 +253,36 @@ $$('.toolbar button[data-cmd]').forEach(b => {
 
 /* ---------- writing mode (HTML / plain text), colour, HTML source ---------- */
 function showMode() {
-  const toc = S.cur === -1, text = isText(), tb = $('#toolbar');
+  const toc = S.cur === -1, text = isText(), code = isCode(), tb = $('#toolbar');
   $('#modeBar').hidden = toc;
-  $$('#modeBar [data-mode]').forEach(b => { const on = b.dataset.mode === (text ? 'text' : 'html'); b.classList.toggle('on', on); b.setAttribute('aria-pressed', on); });
-  tb.hidden = text; tb.classList.toggle('off', body.contentEditable === 'false'); tb.classList.toggle('srcmode', srcOn);
+  $('#codeBar').hidden = !code; codeBox.hidden = !code; codeLive.hidden = !code;
+  $$('#modeBar [data-mode]').forEach(b => { const on = b.dataset.mode === (text ? 'text' : code ? 'code' : 'html'); b.classList.toggle('on', on); b.setAttribute('aria-pressed', on); });
+  tb.hidden = text || code; tb.classList.toggle('off', body.contentEditable === 'false'); tb.classList.toggle('srcmode', srcOn);
   $('#btnSrc').classList.toggle('on', srcOn);
-  body.hidden = text || srcOn; plain.hidden = !text; srcBox.hidden = text || !srcOn;
+  body.hidden = text || code || srcOn; plain.hidden = !text; srcBox.hidden = text || code || !srcOn;
 }
 $$('#modeBar [data-mode]').forEach(b => b.onclick = () => {
   if (S.cur === -1) return;
   commit(); const c = S.chapters[S.cur], to = b.dataset.mode;
-  if ((c.mode || 'html') === to) return;
+  const from = c.mode || 'html';
+  if (from === to) return;
+  if (from === 'code' && to !== 'code' && looksLikeCode(c.html) && !confirm('কোড মোড থেকে বের হলে CSS ও JavaScript বাদ যাবে। চালিয়ে যাবেন?')) return;
   if (to === 'text') {
-    if (/<(?!\/?(p|br|div)\b)[a-z]/i.test(c.html) && !confirm('সাধারণ টেক্সটে গেলে রং, বোল্ড, ছবি ইত্যাদি ফরম্যাট বাদ যাবে। চালিয়ে যাবেন?')) return;
-    c.html = htmlToText(c.html);
-  } else c.html = textToHtml(c.html);
+    if (from === 'html' && /<(?!\/?(p|br|div)\b)[a-z]/i.test(c.html) && !confirm('সাধারণ টেক্সটে গেলে রং, বোল্ড, ছবি ইত্যাদি ফরম্যাট বাদ যাবে। চালিয়ে যাবেন?')) return;
+    c.html = htmlToText(from === 'code' ? sanitize(c.html, true) : c.html);
+  } else if (to === 'html') c.html = from === 'text' ? textToHtml(c.html) : sanitize(c.html, true);
+  else c.html = from === 'text' ? textToHtml(c.html) : c.html;
   c.mode = to; renderPane(); renderList(); stat(); save();
-  (to === 'text' ? plain : body).focus();
+  (to === 'text' ? plain : to === 'code' ? codeBox : body).focus();
 });
 plain.oninput = () => { commit(); stat(); queueSave(); };
 $('#btnSrc').onclick = () => {
   if (isText() || body.contentEditable !== 'true') return;
-  commit(); srcOn = !srcOn; deselect();
+  commit(); srcOn = !srcOn; srcBox._ask = 0; deselect();
   if (srcOn) srcBox.value = clean(body.innerHTML).replace(/<\/(p|h1|h2|h3|blockquote|ul|ol|li|figure|div|table)>/g, '</$1>\n').trim();
   showMode(); (srcOn ? srcBox : body).focus();
 };
-srcBox.oninput = () => { body.innerHTML = sanitize(srcBox.value, true); commit(); stat(); queueSave(); };
+srcBox.oninput = () => { if (/<(style|script)\b/i.test(srcBox.value) && !srcBox._ask) { srcBox._ask = 1; if (confirm('এই কোডে CSS/JavaScript আছে। কোড মোডে নিয়ে পূর্ণ সমর্থন চালু করবেন?')) return toCode(srcBox.value); } body.innerHTML = sanitize(srcBox.value, true); commit(); stat(); queueSave(); };
 function applyColor(col) {
   if (isText() || srcOn || body.contentEditable !== 'true') return;
   body.focus();
@@ -299,6 +312,7 @@ function readImg(file, max, byH, alpha) {
 }
 document.addEventListener('selectionchange', () => { const s = getSelection(); if (s.rangeCount && body.contains(s.anchorNode)) lastRange = s.getRangeAt(0).cloneRange(); });
 async function addImage(file) {
+  if (isCode()) return addAsset(file);
   if (S.cur === -1 && S.toc.auto) return toast('স্বয়ংক্রিয় সূচিপত্রে ছবি দেওয়া যায় না');
   try {
     const src = await readImg(file, 1200, false, true);
@@ -310,6 +324,80 @@ async function addImage(file) {
 }
 $('#btnImg').onclick = () => { if (S.cur === -1 && S.toc.auto) return toast('ছবি দিতে সূচিপত্রের ধরন "নিজে লিখব" করুন'); $('#fileImg').click(); };
 $('#fileImg').onchange = async e => { for (const f of e.target.files) await addImage(f); e.target.value = ''; };
+/* ---------- code mode: live preview, image assets, file upload ---------- */
+let liveT;
+function liveRender() { codeLive.srcdoc = codeDoc(codeBox.value); }
+function toCode(html) { const c = S.chapters[S.cur]; c.mode = 'code'; c.html = html; srcOn = false; renderPane(); renderList(); stat(); save(); toast('কোড মোড চালু হয়েছে'); }
+function insertAt(ta, t) { const s = ta.selectionStart, e = ta.selectionEnd; ta.setRangeText(t, s, e, 'end'); ta.focus(); commit(); queueSave(); stat(); clearTimeout(liveT); liveT = setTimeout(liveRender, 300); }
+function renderAssets() {
+  const box = $('#assetList'); box.innerHTML = '';
+  Object.keys(S.assets || {}).forEach(n => {
+    const d = document.createElement('span'); d.className = 'as';
+    d.innerHTML = '<img alt=""><span></span><button type="button" title="মুছুন">✕</button>';
+    d.querySelector('img').src = S.assets[n]; d.querySelector('span').textContent = n;
+    d.querySelector('img').onclick = () => insertAt(codeBox, `<img src="asset:${n}" alt="" style="max-width:100%">`);
+    d.querySelector('button').onclick = () => { if (confirm(`"${n}" ছবিটি তালিকা থেকে মুছবেন?`)) { delete S.assets[n]; renderAssets(); liveRender(); save(); } };
+    box.appendChild(d);
+  });
+}
+async function addAsset(file) {
+  try {
+    const src = await readImg(file, 1200, false, true); let k = 1; while (S.assets['img' + k]) k++;
+    const n = 'img' + k; S.assets[n] = src; renderAssets();
+    insertAt(codeBox, `<img src="asset:${n}" alt="" style="max-width:100%">\n`); save();
+  } catch (e) { toast('ছবিটি যোগ করা যায়নি'); }
+}
+codeBox.oninput = () => { commit(); stat(); queueSave(); clearTimeout(liveT); liveT = setTimeout(liveRender, 700); };
+codeBox.addEventListener('keydown', e => { if (e.key === 'Tab') { e.preventDefault(); insertAt(codeBox, '  '); } });
+codeBox.addEventListener('paste', e => { const f = [...((e.clipboardData || {}).files || [])].find(x => x.type.startsWith('image/')); if (f) { e.preventDefault(); addAsset(f); } });
+$('#btnCodeRun').onclick = liveRender;
+$('#btnCodeImg').onclick = () => $('#fileImg').click();
+$$('.btnFile').forEach(b => b.onclick = () => $('#fileAny').click());
+const rdText = f => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result)); r.onerror = rej; r.readAsText(f); });
+async function newChapter(title, html, mode) { commit(); S.chapters.push({ id: uid(), title, html, mode }); select(S.chapters.length - 1); await save(); }
+async function handleFiles(files) {
+  for (const f of files) {
+    const n = f.name, ext = (n.split('.').pop() || '').toLowerCase(), base = n.replace(/\.[^.]+$/, '');
+    try {
+      if (f.type.startsWith('image/')) await addImage(f);
+      else if (ext === 'html' || ext === 'htm') { const t = await rdText(f), m = /<title[^>]*>([^<]+)<\/title>/i.exec(t); await newChapter((m && m[1].trim()) || base, t, 'code'); toast('HTML ফাইল নতুন অধ্যায় হিসেবে যোগ হয়েছে'); }
+      else if (ext === 'txt' || ext === 'md') { await newChapter(base, await rdText(f), 'text'); toast('টেক্সট ফাইল নতুন অধ্যায় হিসেবে যোগ হয়েছে'); }
+      else if (ext === 'css' || ext === 'js') {
+        if (!isCode()) { toast('CSS/JS যোগ করতে আগে কোড মোড নির্বাচন করুন'); continue; }
+        const t = await rdText(f); insertAt(codeBox, ext === 'css' ? `\n<style>\n${t}\n</style>\n` : `\n<script>\n${t}\n<\/script>\n`); liveRender();
+      } else if (ext === 'json') {
+        if (!confirm('প্রজেক্ট ফাইল খুললে বর্তমান বইটি বদলে যাবে। চালিয়ে যাবেন?')) continue;
+        const dt = new DataTransfer(); dt.items.add(f); $('#fileOpen').files = dt.files; $('#fileOpen').onchange({ target: $('#fileOpen') });
+      } else toast(`"${n}" ফাইলের ধরন সমর্থিত নয়`);
+    } catch (e) { toast(`"${n}" ফাইল পড়া যায়নি`); }
+  }
+}
+$('#fileAny').onchange = async e => { await handleFiles([...e.target.files]); e.target.value = ''; };
+const edSec = $('.editor');
+edSec.addEventListener('dragover', e => { if (e.dataTransfer && [...e.dataTransfer.types].includes('Files')) e.preventDefault(); });
+edSec.addEventListener('drop', e => { if (e.dataTransfer && e.dataTransfer.files.length) { e.preventDefault(); handleFiles([...e.dataTransfer.files]); } });
+async function inlineRemote(h, fail) {
+  const urls = [...new Set([...h.matchAll(/src="(https?:\/\/[^"]+)"/g)].map(m => m[1]))];
+  for (const u of urls) {
+    try {
+      const r = await fetch(u); if (!r.ok) throw 0; const b = await r.blob(); if (!/^image\//.test(b.type)) throw 0;
+      const d = await new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.onerror = rej; fr.readAsDataURL(b); });
+      h = h.split('src="' + u + '"').join('src="' + d + '"');
+    } catch (e) { fail.push(u); }
+  }
+  return h;
+}
+function snapshot(src) {
+  return new Promise(res => {
+    const f = document.createElement('iframe'), id = uid(); let done = false;
+    f.sandbox = 'allow-scripts'; f.style.cssText = 'position:fixed;left:-9999px;top:0;width:800px;height:600px;border:0';
+    const fin = v => { if (done) return; done = true; removeEventListener('message', on); f.remove(); res(v); };
+    const on = e => { if (e.source === f.contentWindow && e.data && e.data.snap === id) fin(e.data); };
+    addEventListener('message', on);
+    const sc = `<script>addEventListener('load',function(){setTimeout(function(){var s=[].map.call(document.querySelectorAll('style'),function(x){return x.textContent}).join('\\n');document.querySelectorAll('script,style,link,base').forEach(function(x){x.remove()});parent.postMessage({snap:'${id}',css:s,body:document.body.innerHTML},'*')},800)})<\/script>`;
+    f.srcdoc = codeDoc(src, sc); document.body.appendChild(f); setTimeout(() => fin(null), 7000);
+  });
+}
 function pick(f) { deselect(); selFig = f; f.classList.add('sel'); $('#imgBar').hidden = false; }
 function deselect() { if (selFig) selFig.classList.remove('sel'); selFig = null; $('#imgBar').hidden = true; }
 body.addEventListener('click', e => { const f = e.target.closest && e.target.closest('figure'); if (f && body.contains(f) && body.contentEditable === 'true') pick(f); else deselect(); });
@@ -371,7 +459,7 @@ figure.fig-left{margin-left:0;margin-right:auto}figure.fig-right{margin-left:aut
 figure img{width:100%;height:auto;display:block}
 figcaption{font-size:.85em;color:#555;margin-top:.4em;text-align:center}
 ol.toc{list-style:none;padding:0}ol.toc li{margin:.6em 0}ol.toc a{text-decoration:none;color:inherit}`;
-const page = (t, b, l, extra = '') => `<?xml version="1.0" encoding="utf-8"?>\n<!DOCTYPE html>\n<html xmlns="http://www.w3.org/1999/xhtml" ${extra} lang="${l}" xml:lang="${l}"><head><meta charset="utf-8"/><title>${esc(t)}</title><link rel="stylesheet" type="text/css" href="style.css"/></head><body>${b}</body></html>`;
+const page = (t, b, l, extra = '', css = '') => `<?xml version="1.0" encoding="utf-8"?>\n<!DOCTYPE html>\n<html xmlns="http://www.w3.org/1999/xhtml" ${extra} lang="${l}" xml:lang="${l}"><head><meta charset="utf-8"/><title>${esc(t)}</title><link rel="stylesheet" type="text/css" href="style.css"/>${css ? `<style type="text/css">/*<![CDATA[*/${css.replace(/\]\]>/g, '')}/*]]>*/</style>` : ''}</head><body>${b}</body></html>`;
 const tocLinks = () => `<ol class="toc">${S.chapters.map((c, i) => `<li><a href="ch${i + 1}.xhtml">${esc(c.title || 'অধ্যায় ' + (i + 1))}</a></li>`).join('')}</ol>`;
 
 /* ---------- Interactive Preview ---------- */
@@ -402,7 +490,7 @@ $('#btnPreview').onclick = () => {
       id: 'ch-' + idx,
       chIndex: idx,
       title: c.title || ('অধ্যায় ' + (idx + 1)),
-      html: `<h1>${esc(c.title || ('অধ্যায় ' + (idx + 1)))}</h1>${ch2html(c)}`
+      html: c.mode === 'code' ? codeFrame(c.html) : `<h1>${esc(c.title || ('অধ্যায় ' + (idx + 1)))}</h1>${ch2html(c)}`
     });
   });
 
@@ -427,6 +515,12 @@ $('#btnEpub').onclick = async () => {
   if (!m.author.trim()) return toast('লেখকের নাম লিখুন');
   if (typeof JSZip === 'undefined') return toast('JSZip লোড হয়নি — ইন্টারনেট সংযোগ দেখুন');
   try {
+    toast('EPUB প্রস্তুত হচ্ছে…');
+    const fail = [], srcs = [], snaps = [];
+    for (const c of S.chapters) {
+      let h = c.mode === 'text' ? c.html : await inlineRemote(withAssets(c.html), fail);
+      srcs.push(h); snaps.push(c.mode === 'code' ? await snapshot(h) : null);
+    }
     const zip = new JSZip(), id = 'urn:uuid:' + crypto.randomUUID(), L = m.lang, ctx = { map: new Map(), list: [] };
     zip.file('mimetype', 'application/epub+zip', { compression: 'STORE' });
     zip.file('META-INF/container.xml', '<?xml version="1.0"?>\n<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles></container>');
@@ -447,7 +541,8 @@ $('#btnEpub').onclick = async () => {
     }
     S.chapters.forEach((c, i) => {
       const f = `ch${i + 1}.xhtml`;
-      o.file(f, page(c.title, `<h1>${esc(c.title)}</h1>\n${toXhtml(ch2html(c), ctx)}`, L));
+      if (c.mode === 'code') { const sn = snaps[i]; o.file(f, page(c.title, toXhtml(sn ? sn.body : sanitize(srcs[i], true), ctx), L, '', sn ? sn.css : '')); }
+      else o.file(f, page(c.title, `<h1>${esc(c.title)}</h1>\n${toXhtml(ch2html(c, srcs[i]), ctx)}`, L));
       manifest += `<item id="ch${i + 1}" href="${f}" media-type="application/xhtml+xml"/>`;
       spine += `<itemref idref="ch${i + 1}"/>`;
       navItems += `<li><a href="${f}">${esc(c.title || 'অধ্যায় ' + (i + 1))}</a></li>`;
@@ -458,7 +553,7 @@ $('#btnEpub').onclick = async () => {
     o.file('content.opf', `<?xml version="1.0" encoding="utf-8"?>
 <package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="uid" xml:lang="${L}"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:identifier id="uid">${id}</dc:identifier><dc:title>${esc(m.title)}</dc:title><dc:creator>${esc(m.author)}</dc:creator><dc:language>${L}</dc:language>${m.desc.trim() ? `<dc:description>${esc(m.desc)}</dc:description>` : ''}<meta property="dcterms:modified">${now}</meta></metadata><manifest>${manifest}</manifest><spine>${spine}</spine></package>`);
     const blob = await zip.generateAsync({ type: 'blob', mimeType: 'application/epub+zip', compression: 'DEFLATE' });
-    download(blob, fileName() + '.epub'); toast('EPUB তৈরি হয়েছে');
+    download(blob, fileName() + '.epub'); toast(fail.length ? `EPUB তৈরি হয়েছে। ${fail.length}টি অনলাইন ছবি আনা যায়নি, সেগুলো বাদ গেছে` : 'EPUB তৈরি হয়েছে');
   } catch (err) { console.error(err); toast('EPUB তৈরি করতে সমস্যা হয়েছে'); }
 };
 

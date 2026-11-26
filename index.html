@@ -81,6 +81,14 @@
     <div id="modeBar" class="modeBar" role="group" aria-label="লেখার ধরন">
       <button type="button" data-mode="html" title="রং, বোল্ড, ইটালিক ইত্যাদি সহ ফরম্যাটেড লেখা">এইচটিএমএল</button>
       <button type="button" data-mode="text" title="কোনো ফরম্যাট ছাড়া সাধারণ লেখা">সাধারণ টেক্সট</button>
+      <button type="button" data-mode="code" title="পূর্ণ HTML + CSS + JavaScript কোড (সরাসরি চলবে)">কোড (HTML/CSS/JS)</button>
+    </div>
+    <div id="codeBar" class="codeBar" hidden>
+      <button type="button" id="btnCodeImg">🖼 ছবি আপলোড করে কোডে বসান</button>
+      <button type="button" class="btnFile">📎 ফাইল আপলোড</button>
+      <button type="button" id="btnCodeRun">▶ প্রিভিউ চালান</button>
+      <div id="assetList" class="assetList"></div>
+      <small>কোডে ছবি: <code>&lt;img src="asset:img1"&gt;</code> বা <code>&lt;img src="https://…"&gt;</code>। CSS ও JS সরাসরি লিখুন বা পেস্ট করুন।</small>
     </div>
     <div id="tocBar" class="tocBar" hidden>
       <label class="chk"><input id="tocOn" type="checkbox"> বইয়ে সূচিপত্র পেজ রাখুন</label>
@@ -119,6 +127,7 @@
       <button data-cmd="justifyFull">সমান</button>
       <span class="sep"></span>
       <button id="btnImg" title="ছবি যোগ করুন">ছবি</button>
+      <button class="btnFile" title="ছবি, HTML, টেক্সট, CSS, JS ফাইল আপলোড">ফাইল</button>
       <button id="btnSrc" title="এইচটিএমএল কোড দেখুন/লিখুন">&lt;/&gt; কোড</button>
       <span class="sep"></span>
       <button data-cmd="undo">আনডু</button>
@@ -138,9 +147,12 @@
       <button data-img="del" class="danger">ছবি মুছুন</button>
     </div>
     <input type="file" id="fileImg" accept="image/*" multiple hidden>
+    <input type="file" id="fileAny" accept="image/*,.html,.htm,.txt,.md,.css,.js,.json,text/*" multiple hidden>
     <div id="body" class="page" contenteditable="true" spellcheck="false" aria-label="অধ্যায়ের লেখা"></div>
     <textarea id="plain" class="page plain" hidden spellcheck="false" aria-label="সাধারণ টেক্সট" placeholder="এখানে সাধারণ টেক্সট লিখুন। ফাঁকা লাইন দিলে নতুন অনুচ্ছেদ হবে।"></textarea>
     <textarea id="srcBox" class="page plain src" hidden spellcheck="false" aria-label="এইচটিএমএল কোড"></textarea>
+    <textarea id="codeBox" class="page plain src code" hidden spellcheck="false" aria-label="HTML, CSS, JavaScript কোড" placeholder="এখানে পূর্ণ HTML, CSS ও JavaScript কোড লিখুন বা পেস্ট করুন…"></textarea>
+    <iframe id="codeLive" class="codeLive" sandbox="allow-scripts allow-popups" hidden title="লাইভ প্রিভিউ"></iframe>
     <div class="status"><span id="stat"></span><span id="saved">অটো-সেভ চালু</span></div>
   </section>
 </main>

@@ -282,3 +282,15 @@ button.danger { color: var(--danger); }
   background: #1c222b; color: #fff; padding: 8px 16px; border-radius: 20px; font-size: 0.9rem;
   box-shadow: 0 4px 14px rgba(0,0,0,0.25);
 }
+
+/* code mode */
+.codeBar{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:8px}
+.codeBar button{font-size:.85rem;padding:4px 10px}
+.codeBar small{flex-basis:100%;opacity:.75}
+.assetList{display:flex;gap:6px;flex-wrap:wrap;flex-basis:100%}
+.assetList .as{display:flex;align-items:center;gap:4px;border:1px solid #b9c4cf;border-radius:8px;padding:2px 6px;font-size:.8rem;background:#fff}
+.assetList .as img{width:34px;height:34px;object-fit:cover;border-radius:4px;cursor:pointer}
+.assetList .as button{padding:0 6px;font-size:.8rem}
+#codeBox{min-height:320px;white-space:pre;overflow:auto;tab-size:2}
+.codeLive{width:100%;height:380px;border:1px solid #b9c4cf;border-radius:8px;background:#fff;margin-top:10px}
+.codeLive[hidden],#codeBox[hidden],.codeBar[hidden]{display:none!important}
