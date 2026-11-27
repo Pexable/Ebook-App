@@ -485,9 +485,7 @@ figure{display:block;margin:1.2em auto;text-align:center;page-break-inside:avoid
 figure.fig-left{margin-left:0;margin-right:auto}figure.fig-right{margin-left:auto;margin-right:0}
 figure img{width:100%;height:auto;display:block}
 figcaption{font-size:.85em;color:#555;margin-top:.4em;text-align:center}
-ol.toc{list-style:none;padding:0}ol.toc li{margin:.6em 0}ol.toc a{text-decoration:none;color:inherit}
-*{box-sizing:border-box}
-section,article,div,header,main,p{min-height:0!important;height:auto!important;float:none!important;position:static!important;page-break-before:auto!important;page-break-after:auto!important;page-break-inside:auto!important;break-before:auto!important;break-after:auto!important;break-inside:auto!important}`;
+ol.toc{list-style:none;padding:0}ol.toc li{margin:.6em 0}ol.toc a{text-decoration:none;color:inherit}`;
 const page = (t, b, l, extra = '', css = '') => `<?xml version="1.0" encoding="utf-8"?>\n<!DOCTYPE html>\n<html xmlns="http://www.w3.org/1999/xhtml" ${extra} lang="${l}" xml:lang="${l}"><head><meta charset="utf-8"/><title>${esc(t)}</title><link rel="stylesheet" type="text/css" href="style.css"/>${css ? `<style type="text/css">/*<![CDATA[*/${css.replace(/\]\]>/g, '')}/*]]>*/</style>` : ''}</head><body>${b}</body></html>`;
 const tocLinks = () => `<ol class="toc">${S.chapters.map((c, i) => `<li><a href="ch${i + 1}.xhtml">${esc(c.title || 'অধ্যায় ' + (i + 1))}</a></li>`).join('')}</ol>`;
 

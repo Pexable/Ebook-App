@@ -159,7 +159,10 @@ const BASE_CSS = `
   }
   html.is-paged #rPageWrap img,
   html.is-paged #rPageWrap svg,
-  html.is-paged #rPageWrap video {
+  html.is-paged #rPageWrap video,
+  html.is-paged #rPageWrap figure {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
     max-height: 64vh !important;
   }
   figure img { width: 100% !important; }
@@ -487,10 +490,12 @@ function applyPaginationLayout(opts = {}) {
 
   R.pageW = colW;
   R.pageGap = gap;
-  wrap.style.width = colW + 'px';
-  wrap.style.height = outerH + 'px';
-  wrap.style.columnWidth = colW + 'px';
-  wrap.style.columnGap = gap + 'px';
+  // !important: বইয়ের নিজস্ব CSS (যেমন div{height:auto!important}) যেন কলাম-পেজিনেশন ভাঙতে না পারে
+  wrap.style.setProperty('width', colW + 'px', 'important');
+  wrap.style.setProperty('height', outerH + 'px', 'important');
+  wrap.style.setProperty('column-width', colW + 'px', 'important');
+  wrap.style.setProperty('column-gap', gap + 'px', 'important');
+  wrap.style.setProperty('column-fill', 'auto', 'important');
   wrap.style.transform = 'translateX(0px)';
 
   const sw = wrap.scrollWidth;
