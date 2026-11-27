@@ -27,7 +27,7 @@ function fixEmbeds(h) {
     return '<iframe' + a + ' referrerpolicy="strict-origin-when-cross-origin" allow="' + EMBED_ALLOW + '" allowfullscreen>';
   });
 }
-const codeDoc = (src, extra = '') => '<!DOCTYPE html><html><head>' + CODE_HEAD + '</head><body>' + withAssets(fixEmbeds(src)) + (hasEmbed(src) ? EMBED_GUARD : '') + extra + '</body></html>';
+const codeDoc = (src, extra = '', pre = '') => '<!DOCTYPE html><html><head>' + pre + CODE_HEAD + '</head><body>' + withAssets(fixEmbeds(src)) + (hasEmbed(src) ? EMBED_GUARD : '') + extra + '</body></html>';
 const codeFrame = src => '<iframe class="codeFrame" sandbox="allow-scripts allow-popups allow-presentation' + (hasEmbed(src) ? ' allow-same-origin' : '') + '" allow="' + EMBED_ALLOW + '" allowfullscreen srcdoc="' + esc(codeDoc(src)) + '"></iframe>';
 const fresh = () => ({
   meta: { title:'', author:'', lang:'bn', desc:'' },
@@ -416,8 +416,13 @@ function snapshot(src) {
     const fin = v => { if (done) return; done = true; removeEventListener('message', on); f.remove(); res(v); };
     const on = e => { if (e.source === f.contentWindow && e.data && e.data.snap === id) fin(e.data); };
     addEventListener('message', on);
-    const sc = `<script>addEventListener('load',function(){setTimeout(function(){var s=[].map.call(document.querySelectorAll('style'),function(x){return x.textContent}).join('\\n');document.querySelectorAll('script,style,link,base').forEach(function(x){x.remove()});parent.postMessage({snap:'${id}',css:s,body:document.body.innerHTML},'*')},800)})<\/script>`;
-    f.srcdoc = codeDoc(src, sc); document.body.appendChild(f); setTimeout(() => fin(null), 7000);
+    // EPUB-এ JavaScript চলে না। তাই "স্ক্রল করলে ভেসে ওঠা" (reveal/fade-in) টেক্সট যেন লুকানো না থাকে,
+    // সেজন্য IntersectionObserver-কে সবসময় "দৃশ্যমান" ধরানো হয় (লুকানো iframe-এ এটা কখনো ট্রিগার হয় না)।
+    const shim = '<script>(function(){function E(t){var r=t.getBoundingClientRect();return{target:t,isIntersecting:true,intersectionRatio:1,time:0,boundingClientRect:r,intersectionRect:r,rootBounds:null}}window.IntersectionObserver=function(cb){var me=this;this.observe=function(t){setTimeout(function(){try{cb([E(t)],me)}catch(e){}},30)};this.unobserve=function(){};this.disconnect=function(){};this.takeRecords=function(){return[]}}})()<\/script>';
+    const grab = "var s=[].map.call(document.querySelectorAll('style'),function(x){return x.textContent}).join('\\n');document.querySelectorAll('script,style,link,base').forEach(function(x){x.remove()});parent.postMessage({snap:'" + id + "',css:s,body:document.body.innerHTML},'*')";
+    const walk = "var h=Math.max(document.documentElement.scrollHeight,document.body.scrollHeight),v=innerHeight||600;for(var y=0;y<=h;y+=Math.max(100,v/2)){scrollTo(0,y);dispatchEvent(new Event('scroll'));document.dispatchEvent(new Event('scroll'))}scrollTo(0,0);dispatchEvent(new Event('scroll'));";
+    const sc = "<script>addEventListener('load',function(){setTimeout(function(){" + walk + "setTimeout(function(){" + grab + "},700)},800)})<\/script>";
+    f.srcdoc = codeDoc(src, sc, shim); document.body.appendChild(f); setTimeout(() => fin(null), 8000);
   });
 }
 function pick(f) { deselect(); selFig = f; f.classList.add('sel'); $('#imgBar').hidden = false; }

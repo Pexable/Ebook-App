@@ -44,7 +44,7 @@ const MIME = {
 
 const THEME_BG = ['#ffffff', '#f4ecd8', '#14181f'];
 
-const GRAIN = c => `url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 ${c[0]}  0 0 0 0 ${c[1]}  0 0 0 0 ${c[2]}  0 0 0 0 ${c[3]} 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>")`;
+const GRAIN = c => `url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 ${c[0]}  0 0 0 0 ${c[1]}  0 0 0 0 ${c[2]}  0 0 0 ${c[3]} 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>")`;
 const THEMES = [
   `html{background-color:#fbf8f1!important;background-image:${GRAIN(['.45','.38','.28','.10'])}!important;color:#1c222b!important}body,#rPageWrap{background:transparent!important;color:#1c222b!important}`,
   `html{background-color:#f4ecd8!important;background-image:${GRAIN(['.45','.32','.15','.13'])}!important;color:#3b2f1e!important}body,#rPageWrap{background:transparent!important;color:#3b2f1e!important}`,
